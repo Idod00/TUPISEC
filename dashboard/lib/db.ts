@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import path from "path";
-import type { ScanRecord, ScanReport, BatchRecord, FindingStatusRecord, FindingStatusValue, ScheduleRecord, NotificationConfig, EnrichmentData } from "./types";
+import type { ScanRecord, ScanReport, BatchRecord, FindingStatusRecord, FindingStatusValue, ScheduleRecord, NotificationConfig, EnrichmentData, SSLMonitorRecord, SSLCheckHistoryRecord, SSLCheckResult } from "./types";
 
 const DB_PATH = path.join(process.cwd(), "data", "tupisec.db");
 
@@ -111,6 +111,37 @@ function getDb(): Database.Database {
     if (!scanCols.some((c) => c.name === "enrichment_json")) {
       _db.exec("ALTER TABLE scans ADD COLUMN enrichment_json TEXT");
     }
+
+    // SSL monitors table
+    _db.exec(`
+      CREATE TABLE IF NOT EXISTS ssl_monitors (
+        id TEXT PRIMARY KEY,
+        domain TEXT NOT NULL,
+        port INTEGER DEFAULT 443,
+        interval TEXT NOT NULL,
+        cron_expr TEXT NOT NULL,
+        enabled INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL,
+        last_check TEXT,
+        next_check TEXT,
+        last_status TEXT,
+        last_days_remaining INTEGER,
+        notify_days_before INTEGER DEFAULT 14,
+        notify_email TEXT
+      );
+    `);
+
+    // SSL check history table
+    _db.exec(`
+      CREATE TABLE IF NOT EXISTS ssl_check_history (
+        id TEXT PRIMARY KEY,
+        monitor_id TEXT NOT NULL,
+        checked_at TEXT NOT NULL,
+        status TEXT NOT NULL,
+        days_remaining INTEGER,
+        result_json TEXT NOT NULL
+      );
+    `);
   }
   return _db;
 }
@@ -385,4 +416,69 @@ export function getScanEnrichment(id: string): EnrichmentData | null {
   } catch {
     return null;
   }
+}
+
+// ─── SSL Monitors ──────────────────────────────────────────────────
+
+export function createSSLMonitor(monitor: Omit<SSLMonitorRecord, "last_check" | "next_check" | "last_status" | "last_days_remaining">): SSLMonitorRecord {
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO ssl_monitors (id, domain, port, interval, cron_expr, enabled, created_at, notify_days_before, notify_email)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(monitor.id, monitor.domain, monitor.port, monitor.interval, monitor.cron_expr,
+        monitor.enabled, monitor.created_at, monitor.notify_days_before, monitor.notify_email ?? null);
+  return db.prepare(`SELECT * FROM ssl_monitors WHERE id = ?`).get(monitor.id) as SSLMonitorRecord;
+}
+
+export function listSSLMonitors(): SSLMonitorRecord[] {
+  const db = getDb();
+  return db.prepare(`SELECT * FROM ssl_monitors ORDER BY created_at DESC`).all() as SSLMonitorRecord[];
+}
+
+export function getSSLMonitor(id: string): SSLMonitorRecord | undefined {
+  const db = getDb();
+  return db.prepare(`SELECT * FROM ssl_monitors WHERE id = ?`).get(id) as SSLMonitorRecord | undefined;
+}
+
+export function deleteSSLMonitor(id: string): boolean {
+  const db = getDb();
+  const result = db.prepare(`DELETE FROM ssl_monitors WHERE id = ?`).run(id);
+  db.prepare(`DELETE FROM ssl_check_history WHERE monitor_id = ?`).run(id);
+  return result.changes > 0;
+}
+
+export function updateSSLMonitorAfterCheck(
+  id: string,
+  status: string,
+  daysRemaining: number | null,
+  lastCheck: string,
+  nextCheck: string
+): void {
+  const db = getDb();
+  db.prepare(
+    `UPDATE ssl_monitors SET last_status = ?, last_days_remaining = ?, last_check = ?, next_check = ? WHERE id = ?`
+  ).run(status, daysRemaining, lastCheck, nextCheck, id);
+}
+
+// ─── SSL Check History ─────────────────────────────────────────────
+
+export function saveSSLCheckHistory(
+  id: string,
+  monitorId: string,
+  status: string,
+  daysRemaining: number | null,
+  result: SSLCheckResult
+): void {
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO ssl_check_history (id, monitor_id, checked_at, status, days_remaining, result_json)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(id, monitorId, result.checked_at, status, daysRemaining, JSON.stringify(result));
+}
+
+export function getSSLCheckHistory(monitorId: string, limit = 20): SSLCheckHistoryRecord[] {
+  const db = getDb();
+  return db.prepare(
+    `SELECT * FROM ssl_check_history WHERE monitor_id = ? ORDER BY checked_at DESC LIMIT ?`
+  ).all(monitorId, limit) as SSLCheckHistoryRecord[];
 }

@@ -7,6 +7,7 @@ export const translations = {
     "nav.history": "History",
     "nav.batch": "Batch",
     "nav.schedules": "Schedules",
+    "nav.ssl": "SSL",
     "nav.settings": "Settings",
 
     // Home
@@ -149,6 +150,36 @@ export const translations = {
     "grouped.date": "Date",
     "grouped.status": "Status",
 
+    // SSL Monitor
+    "ssl.title": "SSL Certificate Monitor",
+    "ssl.subtitle": "Monitor SSL/TLS certificate expiry and receive alerts before they expire.",
+    "ssl.addMonitor": "Add Monitor",
+    "ssl.domain": "Domain",
+    "ssl.port": "Port",
+    "ssl.alertDays": "Alert N days before expiry",
+    "ssl.alertEmail": "Alert Email (optional)",
+    "ssl.checkNow": "Check Now",
+    "ssl.status.ok": "OK",
+    "ssl.status.warning": "Warning",
+    "ssl.status.error": "Error",
+    "ssl.daysRemaining": "{n} days remaining",
+    "ssl.expires": "Expires",
+    "ssl.issuer": "Issuer",
+    "ssl.protocol": "Protocol",
+    "ssl.none": "No SSL monitors configured yet.",
+
+    // SMTP Settings
+    "settings.smtp": "Email (SMTP)",
+    "settings.smtpDesc": "Configure SMTP to receive SSL alert emails.",
+    "settings.smtpHost": "SMTP Host",
+    "settings.smtpPort": "Port",
+    "settings.smtpUser": "Username",
+    "settings.smtpPass": "Password",
+    "settings.smtpFrom": "From Address",
+    "settings.smtpSecure": "Use SSL/TLS (port 465)",
+    "settings.testEmail": "Send Test Email",
+    "settings.testEmailTo": "Recipient email",
+
     // Enrichment
     "enrichment.enrich": "Enrich",
     "enrichment.reEnrich": "Re-enrich",
@@ -188,6 +219,7 @@ export const translations = {
     "nav.history": "Historial",
     "nav.batch": "Masivo",
     "nav.schedules": "Programados",
+    "nav.ssl": "SSL",
     "nav.settings": "Ajustes",
 
     // Home
@@ -329,6 +361,36 @@ export const translations = {
     "grouped.retest": "Re-escanear",
     "grouped.date": "Fecha",
     "grouped.status": "Estado",
+
+    // SSL Monitor
+    "ssl.title": "Monitor de Certificados SSL",
+    "ssl.subtitle": "Monitoreá el vencimiento de certificados SSL/TLS y recibí alertas antes de que expiren.",
+    "ssl.addMonitor": "Agregar Monitor",
+    "ssl.domain": "Dominio",
+    "ssl.port": "Puerto",
+    "ssl.alertDays": "Alertar N días antes del vencimiento",
+    "ssl.alertEmail": "Email de Alerta (opcional)",
+    "ssl.checkNow": "Verificar Ahora",
+    "ssl.status.ok": "OK",
+    "ssl.status.warning": "Atención",
+    "ssl.status.error": "Error",
+    "ssl.daysRemaining": "{n} días restantes",
+    "ssl.expires": "Vence",
+    "ssl.issuer": "Emisor",
+    "ssl.protocol": "Protocolo",
+    "ssl.none": "Sin monitores SSL configurados aún.",
+
+    // SMTP Settings
+    "settings.smtp": "Email (SMTP)",
+    "settings.smtpDesc": "Configurá SMTP para recibir alertas de SSL por email.",
+    "settings.smtpHost": "Host SMTP",
+    "settings.smtpPort": "Puerto",
+    "settings.smtpUser": "Usuario",
+    "settings.smtpPass": "Contraseña",
+    "settings.smtpFrom": "Dirección Remitente",
+    "settings.smtpSecure": "Usar SSL/TLS (puerto 465)",
+    "settings.testEmail": "Enviar Email de Prueba",
+    "settings.testEmailTo": "Email destinatario",
 
     // Enrichment
     "enrichment.enrich": "Enriquecer",

@@ -137,3 +137,46 @@ export interface SubdomainEntry {
   status: number;
   takeover_risk: boolean;
 }
+
+export interface SSLCheckResult {
+  domain: string;
+  checked_at: string;
+  valid: boolean;
+  days_remaining: number | null;
+  valid_from: string;
+  valid_to: string;
+  issuer: { CN?: string; O?: string; C?: string };
+  subject: { CN?: string; O?: string; C?: string };
+  sans: string[];
+  serial_number: string;
+  fingerprint: string;
+  protocol: string;
+  cipher: string;
+  chain_valid: boolean;
+  error?: string;
+}
+
+export interface SSLMonitorRecord {
+  id: string;
+  domain: string;
+  port: number;
+  interval: "daily" | "weekly" | "monthly";
+  cron_expr: string;
+  enabled: number;
+  created_at: string;
+  last_check: string | null;
+  next_check: string | null;
+  last_status: "ok" | "warning" | "error" | null;
+  last_days_remaining: number | null;
+  notify_days_before: number;
+  notify_email: string | null;
+}
+
+export interface SSLCheckHistoryRecord {
+  id: string;
+  monitor_id: string;
+  checked_at: string;
+  status: "ok" | "warning" | "error";
+  days_remaining: number | null;
+  result_json: string;
+}
