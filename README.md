@@ -28,6 +28,16 @@
 
 ---
 
+## Demo
+
+<div align="center">
+
+![Demo](docs/screenshots/demo.gif)
+
+</div>
+
+---
+
 ## Capturas
 
 <div align="center">
