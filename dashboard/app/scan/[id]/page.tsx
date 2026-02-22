@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
-import { ArrowLeft, Calendar, Globe, Loader2, GitCompare } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { ArrowLeft, Calendar, Globe, Loader2, GitCompare, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -23,12 +23,30 @@ import type { ScanReport, ScanRecord, FindingStatusRecord } from "@/lib/types";
 
 export default function ScanReportPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [report, setReport] = useState<ScanReport | null>(null);
   const [status, setStatus] = useState<string>("loading");
   const [riskScore, setRiskScore] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [statuses, setStatuses] = useState<FindingStatusRecord[]>([]);
   const [previousScans, setPreviousScans] = useState<{ id: string; created_at: string }[]>([]);
+  const [retesting, setRetesting] = useState(false);
+
+  const handleRetest = async () => {
+    if (!report) return;
+    setRetesting(true);
+    try {
+      const res = await fetch("/api/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: report.target }),
+      });
+      const data = await res.json();
+      router.push(`/scan/${data.id}`);
+    } catch {
+      setRetesting(false);
+    }
+  };
 
   const fetchReport = useCallback(() => {
     fetch(`/api/scan/${id}`)
@@ -157,6 +175,14 @@ export default function ScanReportPage() {
         <div className="flex items-center gap-4">
           {riskScore != null && <RiskGauge score={riskScore} />}
           <div className="flex flex-col gap-2">
+            <Button variant="outline" size="sm" onClick={handleRetest} disabled={retesting}>
+              {retesting ? (
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-1.5" />
+              )}
+              Re-test
+            </Button>
             <PdfDownloadButton report={report} scanId={id} riskScore={riskScore} />
             <ExportButtons report={report} />
           </div>

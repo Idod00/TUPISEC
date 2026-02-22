@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { History } from "lucide-react";
-import { ScanHistoryTable } from "@/components/scan-history-table";
+import { GroupedHistoryTable } from "@/components/grouped-history-table";
 import type { ScanRecord } from "@/lib/types";
 
 export default function HistoryPage() {
@@ -32,7 +32,7 @@ export default function HistoryPage() {
         <History className="h-5 w-5 text-primary" />
         <h1 className="text-2xl font-bold">Scan History</h1>
       </div>
-      <ScanHistoryTable scans={scans} onDelete={handleDelete} />
+      <GroupedHistoryTable scans={scans} onDelete={handleDelete} />
     </div>
   );
 }
