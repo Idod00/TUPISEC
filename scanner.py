@@ -108,7 +108,7 @@ class Finding:
 class TupiSecScanner:
     """Main scanner class."""
 
-    def __init__(self, target_url, verbose=True):
+    def __init__(self, target_url, verbose=True, cookies=None):
         self.target_url = target_url.rstrip("/")
         self.parsed = urllib.parse.urlparse(self.target_url)
         self.base_url = f"{self.parsed.scheme}://{self.parsed.netloc}"
@@ -120,6 +120,15 @@ class TupiSecScanner:
         self.discovered_urls = set()
         self.discovered_forms = []
         self.tech_stack = {}
+        self.dns_records = []
+        self.whois_info = {}
+        self.cve_data = []
+        if cookies:
+            for pair in cookies.split(";"):
+                pair = pair.strip()
+                if "=" in pair:
+                    name, _, value = pair.partition("=")
+                    self.session.cookies.set(name.strip(), value.strip())
 
     def log(self, msg, color=Fore.WHITE):
         if self.verbose:
@@ -535,6 +544,145 @@ class TupiSecScanner:
         except Exception as e:
             self.log(f"  [!] Tech scan error: {e}", Fore.RED)
 
+    # ─── Module 7b: DNS & WHOIS ────────────────────────────────────────
+    def scan_dns_whois(self):
+        self.log("\n[*] Collecting DNS records & WHOIS info...", Fore.GREEN)
+        hostname = self.parsed.hostname or self.parsed.netloc
+
+        # DNS records
+        try:
+            import dns.resolver
+            record_types = ["A", "AAAA", "MX", "NS", "TXT"]
+            for rtype in record_types:
+                try:
+                    answers = dns.resolver.resolve(hostname, rtype, lifetime=10)
+                    for rdata in answers:
+                        self.dns_records.append({"type": rtype, "value": rdata.to_text()})
+                except Exception:
+                    pass
+            self.log(f"  Found {len(self.dns_records)} DNS records", Fore.CYAN)
+        except ImportError:
+            self.log("  [!] dnspython not installed, skipping DNS lookup", Fore.YELLOW)
+        except Exception as e:
+            self.log(f"  [!] DNS lookup error: {e}", Fore.RED)
+
+        # WHOIS info
+        try:
+            import whois
+            try:
+                w = whois.whois(hostname)
+                if w:
+                    def _str(val):
+                        if val is None:
+                            return ""
+                        if isinstance(val, list):
+                            val = val[0]
+                        return str(val)
+
+                    self.whois_info = {
+                        k: _str(v)
+                        for k, v in {
+                            "registrar": w.registrar,
+                            "creation_date": w.creation_date,
+                            "expiration_date": w.expiration_date,
+                            "name_servers": w.name_servers,
+                            "country": w.country,
+                            "emails": w.emails,
+                        }.items()
+                        if v
+                    }
+                    self.log(f"  WHOIS: {self.whois_info.get('registrar', 'unknown registrar')}", Fore.CYAN)
+            except Exception as e:
+                self.log(f"  [!] WHOIS lookup error: {e}", Fore.RED)
+        except ImportError:
+            self.log("  [!] python-whois not installed, skipping WHOIS", Fore.YELLOW)
+
+    # ─── Module 7c: CVE Lookup ─────────────────────────────────────────
+    def scan_cves(self):
+        self.log("\n[*] Looking up CVEs for detected technologies...", Fore.GREEN)
+        if not self.tech_stack:
+            self.log("  No tech stack detected, skipping CVE lookup.", Fore.YELLOW)
+            return
+
+        import time
+
+        # Build (product, version) pairs from tech_stack values
+        # e.g. "nginx/1.18.0", "PHP/5.6.24", "Apache/2.4.51"
+        products = []
+        ver_pattern = re.compile(r"([a-zA-Z][a-zA-Z0-9\-_\.]+)[/\s]+([\d]+\.[\d]+(?:\.[\d]+)?)")
+        for key, val in self.tech_stack.items():
+            m = ver_pattern.search(val)
+            if m:
+                products.append((m.group(1), m.group(2)))
+            else:
+                # Just use the value as keyword if short enough
+                if len(val) < 50:
+                    products.append((val, ""))
+
+        if not products:
+            self.log("  No versioned products found in tech stack.", Fore.YELLOW)
+            return
+
+        for idx, (product, version) in enumerate(products[:5]):  # cap at 5 queries
+            keyword = f"{product} {version}".strip()
+            self.log(f"  Querying NVD for: {keyword}", Fore.CYAN)
+            try:
+                url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+                resp = requests.get(url, params={"keywordSearch": keyword, "resultsPerPage": 5}, timeout=15)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    items = data.get("vulnerabilities", [])
+                    for item in items:
+                        cve_id = item.get("cve", {}).get("id", "")
+                        metrics = item.get("cve", {}).get("metrics", {})
+                        # Try CVSS v3.1 then v3.0 then v2
+                        score = None
+                        for key in ("cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
+                            metric_list = metrics.get(key, [])
+                            if metric_list:
+                                score = metric_list[0].get("cvssData", {}).get("baseScore")
+                                break
+                        if score is None:
+                            continue
+                        score = float(score)
+                        if score < 7.0:
+                            continue
+
+                        if score >= 9.0:
+                            severity = "CRITICAL"
+                        elif score >= 7.0:
+                            severity = "HIGH"
+                        else:
+                            severity = "MEDIUM"
+
+                        descriptions = item.get("cve", {}).get("descriptions", [])
+                        desc_text = next((d["value"] for d in descriptions if d.get("lang") == "en"), "")
+                        self.cve_data.append({
+                            "cve_id": cve_id,
+                            "product": product,
+                            "version": version,
+                            "cvss_score": score,
+                            "severity": severity,
+                            "description": desc_text[:300],
+                        })
+                        self.add_finding(
+                            severity, "CVE",
+                            f"{cve_id} affects {product} {version}",
+                            f"CVSS {score}: {desc_text[:200]}",
+                            f"Update {product} to a patched version.",
+                        )
+                elif resp.status_code == 429:
+                    self.log("  [!] NVD rate limit hit, pausing...", Fore.YELLOW)
+                    time.sleep(10)
+            except Exception as e:
+                self.log(f"  [!] CVE lookup error for {keyword}: {e}", Fore.RED)
+
+            # Rate limiting: max 5 requests per 10 seconds for unauthenticated NVD
+            if idx < len(products) - 1:
+                time.sleep(2)
+
+        self.log(f"  Found {len(self.cve_data)} high/critical CVEs", Fore.CYAN)
+
     # ─── Module 8: Port Scanning (via nmap) ───────────────────────────
     def scan_ports(self):
         self.log("\n[*] Scanning common ports...", Fore.GREEN)
@@ -741,6 +889,8 @@ class TupiSecScanner:
             ("headers", "Analyzing HTTP headers", lambda: self.scan_headers()),
             ("ssl", "Analyzing SSL/TLS", lambda: self.scan_ssl()),
             ("tech", "Fingerprinting technology", lambda: self.scan_tech()),
+            ("dns", "Collecting DNS & WHOIS", lambda: self.scan_dns_whois()),
+            ("cves", "Looking up CVEs", lambda: self.scan_cves()),
             ("methods", "Testing HTTP methods", lambda: self.scan_methods()),
             ("forms", "Analyzing forms", lambda: None),  # handled specially
             ("crawl", "Crawling site", lambda: self.crawl()),
@@ -780,9 +930,10 @@ def main():
     parser.add_argument("--quiet", "-q", action="store_true", help="Quiet mode")
     parser.add_argument("--json-stdout", action="store_true", help="Output JSON report to stdout")
     parser.add_argument("--progress", action="store_true", help="Emit progress lines to stdout")
+    parser.add_argument("--cookies", help="Cookie header string (e.g. 'session=abc; token=xyz')")
     args = parser.parse_args()
 
-    scanner = TupiSecScanner(args.url, verbose=not args.quiet)
+    scanner = TupiSecScanner(args.url, verbose=not args.quiet, cookies=args.cookies)
 
     scanner.run_full_scan(emit_progress=args.progress)
 
@@ -800,6 +951,9 @@ def main():
             "tech_stack": scanner.tech_stack,
             "discovered_urls": list(scanner.discovered_urls),
             "findings": [f.to_dict() for f in sorted_findings],
+            "dns_records": scanner.dns_records,
+            "whois_info": scanner.whois_info,
+            "cve_data": scanner.cve_data,
         }
         print(json.dumps(report_data))
     else:

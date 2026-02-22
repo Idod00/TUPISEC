@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Shield, History, Home, Layers } from "lucide-react";
+import { Shield, History, Home, Layers, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const links = [
   { href: "/", label: "Dashboard", icon: Home },
   { href: "/history", label: "History", icon: History },
   { href: "/batch", label: "Batch", icon: Layers },
+  { href: "/schedules", label: "Schedules", icon: Clock },
 ];
 
 export function NavBar() {

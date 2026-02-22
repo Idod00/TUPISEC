@@ -203,7 +203,7 @@ export default function ScanReportPage() {
 
       {/* Tech Stack */}
       <div className="mb-6">
-        <TechStackCard techStack={report.tech_stack} />
+        <TechStackCard techStack={report.tech_stack} cveData={report.cve_data} />
       </div>
 
       {/* DNS/WHOIS */}

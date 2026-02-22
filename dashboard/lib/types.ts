@@ -14,6 +14,15 @@ export interface DnsRecord {
   value: string;
 }
 
+export interface CveRecord {
+  cve_id: string;
+  product: string;
+  version: string;
+  cvss_score: number;
+  severity: Severity;
+  description: string;
+}
+
 export interface ScanReport {
   target: string;
   base_url: string;
@@ -24,6 +33,7 @@ export interface ScanReport {
   findings: Finding[];
   dns_records?: DnsRecord[];
   whois_info?: Record<string, string>;
+  cve_data?: CveRecord[];
 }
 
 export interface ScanRecord {
@@ -59,6 +69,17 @@ export interface BatchRecord {
   failed_urls: number;
   urls_json: string;
   scan_ids_json: string;
+}
+
+export interface ScheduleRecord {
+  id: string;
+  target_url: string;
+  interval: "daily" | "weekly" | "monthly";
+  cron_expr: string;
+  enabled: number;
+  created_at: string;
+  last_run: string | null;
+  next_run: string | null;
 }
 
 export type FindingStatusValue = "open" | "in_progress" | "accepted" | "resolved";
