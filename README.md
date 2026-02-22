@@ -28,7 +28,17 @@
 
 ---
 
-## Demo
+## Scanner en acción
+
+<div align="center">
+
+![Terminal](docs/screenshots/terminal.gif)
+
+</div>
+
+---
+
+## Dashboard
 
 <div align="center">
 
