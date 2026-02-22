@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { FindingCard } from "./finding-card";
 import { Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/context";
 import type { Finding, Severity, FindingStatusRecord, FindingStatusValue } from "@/lib/types";
 
 const SEVERITY_ORDER: Severity[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
@@ -30,6 +31,7 @@ export function FindingsTable({ findings, statusMap, onStatusChange, scanId }: F
   const [filter, setFilter] = useState<Severity | "ALL">("ALL");
   const [statusFilter, setStatusFilter] = useState<FindingStatusValue | "ALL">("ALL");
   const [search, setSearch] = useState("");
+  const { t } = useI18n();
 
   const filtered = useMemo(() => {
     let result = findings.map((f, i) => ({ finding: f, originalIndex: i }));
@@ -55,13 +57,21 @@ export function FindingsTable({ findings, statusMap, onStatusChange, scanId }: F
     return result;
   }, [findings, filter, statusFilter, search, statusMap]);
 
+  const statusLabels: Record<string, string> = {
+    ALL: t("findingsTable.allStatus"),
+    open: t("findingStatus.open"),
+    in_progress: t("findingStatus.inProgress"),
+    accepted: t("findingStatus.accepted"),
+    resolved: t("findingStatus.resolved"),
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search findings..."
+            placeholder={t("findingsTable.search")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -85,7 +95,6 @@ export function FindingsTable({ findings, statusMap, onStatusChange, scanId }: F
         </div>
       </div>
 
-      {/* Status filter */}
       {statusMap && (
         <div className="flex flex-wrap gap-1">
           {(["ALL", "open", "in_progress", "accepted", "resolved"] as const).map((s) => (
@@ -99,14 +108,14 @@ export function FindingsTable({ findings, statusMap, onStatusChange, scanId }: F
                 statusFilter === s ? "bg-primary/20 text-primary border-primary/30" : "text-muted-foreground"
               )}
             >
-              {s === "ALL" ? "All Status" : s === "in_progress" ? "In Progress" : s.charAt(0).toUpperCase() + s.slice(1)}
+              {statusLabels[s]}
             </Button>
           ))}
         </div>
       )}
 
       <p className="text-sm text-muted-foreground">
-        Showing {filtered.length} of {findings.length} findings
+        {t("findingsTable.showing", { count: filtered.length, total: findings.length })}
       </p>
 
       <div className="space-y-2">
@@ -120,7 +129,7 @@ export function FindingsTable({ findings, statusMap, onStatusChange, scanId }: F
           />
         ))}
         {filtered.length === 0 && (
-          <p className="py-8 text-center text-muted-foreground">No findings match your filters.</p>
+          <p className="py-8 text-center text-muted-foreground">{t("findingsTable.noMatch")}</p>
         )}
       </div>
     </div>

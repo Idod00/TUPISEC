@@ -2,6 +2,7 @@
 
 import { Card, CardContent } from "@/components/ui/card";
 import { SeverityBadge } from "./severity-badge";
+import { useI18n } from "@/lib/i18n/context";
 import type { Finding } from "@/lib/types";
 
 interface ComparisonSectionProps {
@@ -16,13 +17,15 @@ const variantStyles = {
   persistent: "border-l-4 border-l-slate-500",
 };
 
-const variantLabels = {
-  new: "New Issue",
-  resolved: "Resolved",
-  persistent: "Persistent",
-};
-
 export function ComparisonSection({ title, findings, variant }: ComparisonSectionProps) {
+  const { t } = useI18n();
+
+  const variantLabels = {
+    new: t("compare.newFindings").replace(/s$/, "").replace(/Nuevos Hallazgo$/, "Nuevo Hallazgo"),
+    resolved: t("findingStatus.resolved"),
+    persistent: "Persistent",
+  };
+
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-semibold flex items-center gap-2">
@@ -30,7 +33,7 @@ export function ComparisonSection({ title, findings, variant }: ComparisonSectio
         <span className="text-xs font-normal text-muted-foreground">({findings.length})</span>
       </h3>
       {findings.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4 text-center">None</p>
+        <p className="text-sm text-muted-foreground py-4 text-center">{t("compare.none")}</p>
       ) : (
         <div className="space-y-2">
           {findings.map((f, i) => (

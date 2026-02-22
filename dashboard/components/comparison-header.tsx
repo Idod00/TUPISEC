@@ -2,6 +2,7 @@
 
 import { ArrowRight } from "lucide-react";
 import { getGrade, getGradeColor } from "@/lib/scoring";
+import { useI18n } from "@/lib/i18n/context";
 
 interface ScanSummary {
   id: string;
@@ -17,6 +18,7 @@ interface ComparisonHeaderProps {
 }
 
 export function ComparisonHeader({ scanA, scanB }: ComparisonHeaderProps) {
+  const { t } = useI18n();
   const scoreA = scanA.risk_score;
   const scoreB = scanB.risk_score;
   const gradeA = scoreA != null ? getGrade(scoreA) : null;
@@ -27,7 +29,7 @@ export function ComparisonHeader({ scanA, scanB }: ComparisonHeaderProps) {
     <div className="flex items-center gap-4 flex-wrap">
       {/* Scan A */}
       <div className="flex-1 rounded-lg border border-border/50 p-4 min-w-[200px]">
-        <p className="text-xs text-muted-foreground mb-1">Scan A (Baseline)</p>
+        <p className="text-xs text-muted-foreground mb-1">{t("compare.scanA")}</p>
         <p className="font-mono text-sm truncate">{scanA.target_url}</p>
         <p className="text-xs text-muted-foreground">{new Date(scanA.created_at).toLocaleString()}</p>
         <div className="mt-2 flex items-center gap-2">
@@ -36,7 +38,7 @@ export function ComparisonHeader({ scanA, scanB }: ComparisonHeaderProps) {
               {scoreA} ({gradeA})
             </span>
           )}
-          <span className="text-sm text-muted-foreground">{scanA.finding_count} findings</span>
+          <span className="text-sm text-muted-foreground">{scanA.finding_count} {t("compare.findings")}</span>
         </div>
       </div>
 
@@ -44,7 +46,7 @@ export function ComparisonHeader({ scanA, scanB }: ComparisonHeaderProps) {
 
       {/* Scan B */}
       <div className="flex-1 rounded-lg border border-border/50 p-4 min-w-[200px]">
-        <p className="text-xs text-muted-foreground mb-1">Scan B (Current)</p>
+        <p className="text-xs text-muted-foreground mb-1">{t("compare.scanB")}</p>
         <p className="font-mono text-sm truncate">{scanB.target_url}</p>
         <p className="text-xs text-muted-foreground">{new Date(scanB.created_at).toLocaleString()}</p>
         <div className="mt-2 flex items-center gap-2">
@@ -53,14 +55,14 @@ export function ComparisonHeader({ scanA, scanB }: ComparisonHeaderProps) {
               {scoreB} ({gradeB})
             </span>
           )}
-          <span className="text-sm text-muted-foreground">{scanB.finding_count} findings</span>
+          <span className="text-sm text-muted-foreground">{scanB.finding_count} {t("compare.findings")}</span>
         </div>
       </div>
 
       {/* Delta */}
       {delta != null && (
         <div className="rounded-lg border border-border/50 p-4 text-center min-w-[100px]">
-          <p className="text-xs text-muted-foreground mb-1">Score Delta</p>
+          <p className="text-xs text-muted-foreground mb-1">{t("compare.scoreDelta")}</p>
           <span
             className={`font-mono font-bold text-xl ${delta > 0 ? "text-green-400" : delta < 0 ? "text-red-400" : "text-muted-foreground"}`}
           >

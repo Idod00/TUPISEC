@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useI18n } from "@/lib/i18n/context";
 
 export function ScanForm() {
   const [url, setUrl] = useState("");
@@ -15,6 +16,7 @@ export function ScanForm() {
   const [error, setError] = useState("");
   const [authOpen, setAuthOpen] = useState(false);
   const router = useRouter();
+  const { t } = useI18n();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -23,7 +25,6 @@ export function ScanForm() {
     let targetUrl = url.trim();
     if (!targetUrl) return;
 
-    // Auto-add https:// if no protocol
     if (!/^https?:\/\//i.test(targetUrl)) {
       targetUrl = "https://" + targetUrl;
     }
@@ -31,7 +32,7 @@ export function ScanForm() {
     try {
       new URL(targetUrl);
     } catch {
-      setError("Please enter a valid URL");
+      setError(t("scan.validUrl"));
       return;
     }
 
@@ -44,12 +45,12 @@ export function ScanForm() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Failed to start scan");
+        setError(data.error || t("scan.startFailed"));
         return;
       }
       router.push(`/scan/${data.id}`);
     } catch {
-      setError("Network error. Please try again.");
+      setError(t("scan.networkError"));
     } finally {
       setLoading(false);
     }
@@ -62,7 +63,7 @@ export function ScanForm() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
-            placeholder="https://example.com"
+            placeholder={t("scan.placeholder")}
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             className="pl-9 font-mono"
@@ -73,10 +74,10 @@ export function ScanForm() {
           {loading ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              Scanning...
+              {t("scan.scanning")}
             </>
           ) : (
-            "Scan"
+            t("scan.scanButton")
           )}
         </Button>
       </div>
@@ -85,19 +86,19 @@ export function ScanForm() {
         <CollapsibleTrigger asChild>
           <Button variant="ghost" size="sm" type="button" className="text-muted-foreground w-fit">
             <ChevronDown className={`h-4 w-4 mr-1.5 transition-transform ${authOpen ? "rotate-180" : ""}`} />
-            Authentication (Optional)
+            {t("scan.auth")}
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent className="mt-2">
           <Textarea
-            placeholder="session=abc123; token=xyz789"
+            placeholder={t("scan.cookiePlaceholder")}
             value={cookies}
             onChange={(e) => setCookies(e.target.value)}
             className="font-mono text-sm min-h-[60px]"
             disabled={loading}
           />
           <p className="text-xs text-muted-foreground mt-1">
-            Cookie header value to send with all requests
+            {t("scan.authDesc")}
           </p>
         </CollapsibleContent>
       </Collapsible>

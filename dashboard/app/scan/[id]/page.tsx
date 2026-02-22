@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Calendar, Globe, Loader2, GitCompare, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/lib/i18n/context";
 import { Separator } from "@/components/ui/separator";
 import { StatCard } from "@/components/stat-card";
 import { SummaryCharts } from "@/components/summary-charts";
@@ -24,6 +25,7 @@ import type { ScanReport, ScanRecord, FindingStatusRecord } from "@/lib/types";
 export default function ScanReportPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const { t } = useI18n();
   const [report, setReport] = useState<ScanReport | null>(null);
   const [status, setStatus] = useState<string>("loading");
   const [riskScore, setRiskScore] = useState<number | null>(null);
@@ -121,7 +123,7 @@ export default function ScanReportPage() {
       <div className="mx-auto max-w-4xl px-4 py-12 text-center">
         <p className="text-red-400 mb-4">{error}</p>
         <Link href="/">
-          <Button variant="outline">Back to Dashboard</Button>
+          <Button variant="outline">{t("common.backDashboard")}</Button>
         </Link>
       </div>
     );
@@ -132,9 +134,9 @@ export default function ScanReportPage() {
       <div className="mx-auto max-w-3xl px-4 py-12">
         <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6">
           <ArrowLeft className="h-4 w-4" />
-          Dashboard
+          {t("scan.backDashboard")}
         </Link>
-        <h1 className="text-2xl font-bold mb-6">Scanning...</h1>
+        <h1 className="text-2xl font-bold mb-6">{t("scan.scanning")}…</h1>
         <ScanProgress scanId={id} onComplete={fetchReport} />
       </div>
     );
@@ -143,7 +145,7 @@ export default function ScanReportPage() {
   if (!report) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-12 text-center">
-        <p className="text-muted-foreground">No report data available.</p>
+        <p className="text-muted-foreground">{t("scan.noReport")}</p>
       </div>
     );
   }
@@ -158,9 +160,9 @@ export default function ScanReportPage() {
         <div>
           <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-3">
             <ArrowLeft className="h-4 w-4" />
-            Dashboard
+            {t("scan.backDashboard")}
           </Link>
-          <h1 className="text-2xl font-bold">Security Report</h1>
+          <h1 className="text-2xl font-bold">{t("scan.title")}</h1>
           <div className="mt-2 flex items-center gap-4 text-sm text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <Globe className="h-3.5 w-3.5" />
@@ -181,7 +183,7 @@ export default function ScanReportPage() {
               ) : (
                 <RefreshCw className="h-4 w-4 mr-1.5" />
               )}
-              Re-test
+              {t("scan.retest")}
             </Button>
             <PdfDownloadButton report={report} scanId={id} riskScore={riskScore} />
             <ExportButtons report={report} />
@@ -195,7 +197,7 @@ export default function ScanReportPage() {
           <Link href={`/compare?a=${previousScans[0].id}&b=${id}`}>
             <Button variant="outline" size="sm">
               <GitCompare className="h-4 w-4 mr-1.5" />
-              Compare with Previous Scan
+              {t("scan.compareWithPrev")}
             </Button>
           </Link>
         </div>
@@ -240,7 +242,7 @@ export default function ScanReportPage() {
       {/* Findings */}
       <div className="mb-6">
         <h2 className="text-lg font-semibold mb-4">
-          Findings ({report.findings.length})
+          {t("scan.findings")} ({report.findings.length})
         </h2>
         <FindingsTable
           findings={report.findings}

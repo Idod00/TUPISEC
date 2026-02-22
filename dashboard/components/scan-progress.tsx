@@ -5,6 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 import type { ScanProgress as ScanProgressType } from "@/lib/types";
+import { useI18n } from "@/lib/i18n/context";
 
 interface ScanProgressProps {
   scanId: string;
@@ -15,6 +16,7 @@ export function ScanProgress({ scanId, onComplete }: ScanProgressProps) {
   const [progress, setProgress] = useState<ScanProgressType | null>(null);
   const [done, setDone] = useState(false);
   const [error, setError] = useState(false);
+  const { t } = useI18n();
 
   useEffect(() => {
     const eventSource = new EventSource(`/api/scan/${scanId}/stream`);
@@ -26,7 +28,6 @@ export function ScanProgress({ scanId, onComplete }: ScanProgressProps) {
         if (data.phase === "done") {
           setDone(true);
           eventSource.close();
-          // Small delay to let user see 100%
           setTimeout(onComplete, 800);
         } else if (data.phase === "error") {
           setError(true);
@@ -61,17 +62,17 @@ export function ScanProgress({ scanId, onComplete }: ScanProgressProps) {
           )}
           <span className="font-medium">
             {done
-              ? "Scan complete!"
+              ? t("scanProgress.complete")
               : error
-                ? "Scan failed"
-                : progress?.message || "Starting scan..."}
+                ? t("scanProgress.failed")
+                : progress?.message || t("scanProgress.starting")}
           </span>
           <span className="ml-auto font-mono text-sm text-muted-foreground">{percentage}%</span>
         </div>
         <Progress value={percentage} className="h-2" />
         {progress && !done && !error && (
           <p className="text-xs text-muted-foreground">
-            Step {progress.step} of {progress.total} &mdash; {progress.phase}
+            {t("scanProgress.step", { step: progress.step, total: progress.total })} &mdash; {progress.phase}
           </p>
         )}
       </CardContent>

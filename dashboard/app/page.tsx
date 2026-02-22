@@ -7,19 +7,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScanForm } from "@/components/scan-form";
 import { getGrade, getGradeColor } from "@/lib/scoring";
+import { useI18n } from "@/lib/i18n/context";
 import type { ScanRecord } from "@/lib/types";
 import Link from "next/link";
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString("es-PY", {
-    dateStyle: "short",
-    timeStyle: "short",
-  });
-}
 
 export default function HomePage() {
   const [recents, setRecents] = useState<Omit<ScanRecord, "report_json">[]>([]);
   const router = useRouter();
+  const { t, dateLocale } = useI18n();
+
+  function formatDate(iso: string) {
+    return new Date(iso).toLocaleString(dateLocale, {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
+  }
 
   useEffect(() => {
     fetch("/api/scans")
@@ -36,7 +38,7 @@ export default function HomePage() {
           <h1 className="text-3xl font-bold">TupiSec Scanner</h1>
         </div>
         <p className="text-muted-foreground">
-          Enter a URL to analyze its security posture
+          {t("home.subtitle")}
         </p>
       </div>
 
@@ -50,7 +52,7 @@ export default function HomePage() {
         <Link href="/batch">
           <Button variant="outline" size="sm">
             <Layers className="h-4 w-4 mr-1.5" />
-            Batch Scan (Multiple URLs)
+            {t("home.batchScan")}
           </Button>
         </Link>
       </div>
@@ -60,7 +62,7 @@ export default function HomePage() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Clock className="h-4 w-4" />
-              Recent Scans
+              {t("home.recentScans")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -89,14 +91,14 @@ export default function HomePage() {
                       </span>
                       {scan.status === "completed" && (
                         <span className="text-xs font-mono text-primary">
-                          {scan.finding_count} findings
+                          {scan.finding_count} {t("home.findings")}
                         </span>
                       )}
                       {scan.status === "running" && (
-                        <span className="text-xs text-yellow-400">Running...</span>
+                        <span className="text-xs text-yellow-400">{t("home.running")}</span>
                       )}
                       {scan.status === "failed" && (
-                        <span className="text-xs text-red-400">Failed</span>
+                        <span className="text-xs text-red-400">{t("home.failed")}</span>
                       )}
                     </div>
                   </button>

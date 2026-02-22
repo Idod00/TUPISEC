@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ComparisonHeader } from "@/components/comparison-header";
 import { ComparisonSection } from "@/components/comparison-section";
+import { useI18n } from "@/lib/i18n/context";
 import type { Finding } from "@/lib/types";
 
 interface CompareData {
@@ -18,17 +19,18 @@ interface CompareData {
   persistentFindings: Finding[];
 }
 
-export default function ComparePage() {
+function CompareContent() {
   const searchParams = useSearchParams();
   const a = searchParams.get("a");
   const b = searchParams.get("b");
   const [data, setData] = useState<CompareData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const { t } = useI18n();
 
   useEffect(() => {
     if (!a || !b) {
-      setError("Both scan IDs are required");
+      setError(t("compare.idsRequired"));
       setLoading(false);
       return;
     }
@@ -40,10 +42,10 @@ export default function ComparePage() {
         setLoading(false);
       })
       .catch(() => {
-        setError("Failed to load comparison");
+        setError(t("compare.loadFailed"));
         setLoading(false);
       });
-  }, [a, b]);
+  }, [a, b, t]);
 
   if (loading) {
     return (
@@ -58,7 +60,7 @@ export default function ComparePage() {
       <div className="mx-auto max-w-4xl px-4 py-12 text-center">
         <p className="text-red-400 mb-4">{error}</p>
         <Link href="/history">
-          <Button variant="outline">Back to History</Button>
+          <Button variant="outline">{t("common.backHistory")}</Button>
         </Link>
       </div>
     );
@@ -70,20 +72,32 @@ export default function ComparePage() {
     <div className="mx-auto max-w-5xl px-4 py-8">
       <Link href="/history" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-3">
         <ArrowLeft className="h-4 w-4" />
-        History
+        {t("compare.back")}
       </Link>
 
-      <h1 className="text-2xl font-bold mb-6">Scan Comparison</h1>
+      <h1 className="text-2xl font-bold mb-6">{t("compare.title")}</h1>
 
       <ComparisonHeader scanA={data.scanA} scanB={data.scanB} />
 
       <Separator className="my-6" />
 
       <div className="space-y-8">
-        <ComparisonSection title="New Findings" findings={data.newFindings} variant="new" />
-        <ComparisonSection title="Resolved Findings" findings={data.resolvedFindings} variant="resolved" />
-        <ComparisonSection title="Persistent Findings" findings={data.persistentFindings} variant="persistent" />
+        <ComparisonSection title={t("compare.newFindings")} findings={data.newFindings} variant="new" />
+        <ComparisonSection title={t("compare.resolvedFindings")} findings={data.resolvedFindings} variant="resolved" />
+        <ComparisonSection title={t("compare.persistentFindings")} findings={data.persistentFindings} variant="persistent" />
       </div>
     </div>
+  );
+}
+
+export default function ComparePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    }>
+      <CompareContent />
+    </Suspense>
   );
 }

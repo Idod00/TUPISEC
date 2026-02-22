@@ -11,6 +11,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { getGrade, getGradeColor } from "@/lib/scoring";
+import { useI18n } from "@/lib/i18n/context";
 import type { ScanRecord } from "@/lib/types";
 
 type ScanRow = Omit<ScanRecord, "report_json">;
@@ -20,16 +21,23 @@ interface GroupedHistoryTableProps {
   onDelete: (id: string) => void;
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString("es-PY", {
+function formatDate(iso: string, dateLocale: string) {
+  return new Date(iso).toLocaleString(dateLocale, {
     dateStyle: "short",
     timeStyle: "short",
   });
 }
 
-function timeAgo(iso: string): string {
+function timeAgo(iso: string, lang: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
+  if (lang === "es") {
+    if (mins < 60) return `hace ${mins}m`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `hace ${hrs}h`;
+    const days = Math.floor(hrs / 24);
+    return `hace ${days}d`;
+  }
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
@@ -69,6 +77,7 @@ function DeltaCell({ delta }: { delta: number | null }) {
 
 export function GroupedHistoryTable({ scans, onDelete }: GroupedHistoryTableProps) {
   const router = useRouter();
+  const { t, lang, dateLocale } = useI18n();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [retestingUrl, setRetestingUrl] = useState<string | null>(null);
 
@@ -119,7 +128,7 @@ export function GroupedHistoryTable({ scans, onDelete }: GroupedHistoryTableProp
   if (groups.length === 0) {
     return (
       <p className="py-12 text-center text-muted-foreground">
-        No scans yet. Start your first scan from the Dashboard.
+        {t("grouped.noScans")}
       </p>
     );
   }
@@ -130,12 +139,12 @@ export function GroupedHistoryTable({ scans, onDelete }: GroupedHistoryTableProp
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead className="w-[24px]" />
-            <TableHead>Target</TableHead>
-            <TableHead className="text-center">Latest Score</TableHead>
-            <TableHead className="text-center">Trend</TableHead>
-            <TableHead className="text-center">Scans</TableHead>
-            <TableHead>Last Scan</TableHead>
-            <TableHead className="w-[160px]">Actions</TableHead>
+            <TableHead>{t("grouped.target")}</TableHead>
+            <TableHead className="text-center">{t("grouped.latestScore")}</TableHead>
+            <TableHead className="text-center">{t("grouped.trend")}</TableHead>
+            <TableHead className="text-center">{t("grouped.scans")}</TableHead>
+            <TableHead>{t("grouped.lastScan")}</TableHead>
+            <TableHead className="w-[160px]">{t("grouped.actions")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -178,7 +187,7 @@ export function GroupedHistoryTable({ scans, onDelete }: GroupedHistoryTableProp
                     {urlScans.length}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {timeAgo(latest.created_at)}
+                    {timeAgo(latest.created_at, lang)}
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
@@ -189,7 +198,7 @@ export function GroupedHistoryTable({ scans, onDelete }: GroupedHistoryTableProp
                         onClick={() => router.push(`/scan/${latest.id}`)}
                       >
                         <ExternalLink className="h-3.5 w-3.5 mr-1" />
-                        View
+                        {t("grouped.view")}
                       </Button>
                       <Button
                         variant="ghost"
@@ -203,7 +212,7 @@ export function GroupedHistoryTable({ scans, onDelete }: GroupedHistoryTableProp
                         ) : (
                           <RefreshCw className="h-3.5 w-3.5 mr-1" />
                         )}
-                        Re-test
+                        {t("grouped.retest")}
                       </Button>
                     </div>
                   </TableCell>
@@ -219,7 +228,7 @@ export function GroupedHistoryTable({ scans, onDelete }: GroupedHistoryTableProp
                     >
                       <TableCell />
                       <TableCell className="pl-8 text-sm text-muted-foreground">
-                        {formatDate(scan.created_at)}
+                        {formatDate(scan.created_at, dateLocale)}
                       </TableCell>
                       <TableCell className="text-center">
                         <ScoreCell scan={scan} />

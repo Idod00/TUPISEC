@@ -10,6 +10,7 @@ import { StatCard } from "@/components/stat-card";
 import { BatchProgress } from "@/components/batch-progress";
 import { BatchResultsTable } from "@/components/batch-results-table";
 import { RiskGauge } from "@/components/risk-gauge";
+import { useI18n } from "@/lib/i18n/context";
 
 interface BatchData {
   id: string;
@@ -31,10 +32,11 @@ interface BatchData {
   }[];
 }
 
-export default function BatchPage() {
+export default function BatchResultPage() {
   const { id } = useParams<{ id: string }>();
   const [batch, setBatch] = useState<BatchData | null>(null);
   const [loading, setLoading] = useState(true);
+  const { t } = useI18n();
 
   const fetchBatch = useCallback(() => {
     fetch(`/api/batch/${id}`)
@@ -61,9 +63,9 @@ export default function BatchPage() {
   if (!batch) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-12 text-center">
-        <p className="text-red-400 mb-4">Batch not found</p>
+        <p className="text-red-400 mb-4">{t("batchResult.notFound")}</p>
         <Link href="/">
-          <Button variant="outline">Back to Dashboard</Button>
+          <Button variant="outline">{t("batchResult.back")}</Button>
         </Link>
       </div>
     );
@@ -83,17 +85,17 @@ export default function BatchPage() {
     <div className="mx-auto max-w-5xl px-4 py-8">
       <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-3">
         <ArrowLeft className="h-4 w-4" />
-        Dashboard
+        {t("scan.backDashboard")}
       </Link>
 
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Layers className="h-6 w-6 text-primary" />
-            Batch Scan
+            {t("batch.title")}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {batch.total_urls} URLs &middot; {batch.completed_urls} completed &middot; {batch.failed_urls} failed
+            {batch.total_urls} {t("batch.urls")} &middot; {batch.completed_urls} {t("batchResult.completed")} &middot; {batch.failed_urls} {t("batchResult.failed")}
           </p>
         </div>
         {avgScore != null && <RiskGauge score={avgScore} />}
@@ -102,7 +104,7 @@ export default function BatchPage() {
       {isRunning && (
         <Card className="mb-6">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Progress</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("batchResult.progress")}</CardTitle>
           </CardHeader>
           <CardContent>
             <BatchProgress batchId={id} onComplete={fetchBatch} />
@@ -111,13 +113,13 @@ export default function BatchPage() {
       )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-6">
-        <StatCard label="Total Findings" count={totalFindings} colorClass="text-foreground" />
+        <StatCard label={t("batchResult.totalFindings")} count={totalFindings} colorClass="text-foreground" />
         <StatCard label="Critical" count={totalCritical} colorClass="text-red-400" />
         <StatCard label="High" count={totalHigh} colorClass="text-orange-400" />
         <StatCard label="Medium" count={totalMedium} colorClass="text-yellow-400" />
       </div>
 
-      <h2 className="text-lg font-semibold mb-4">Scan Results</h2>
+      <h2 className="text-lg font-semibold mb-4">{t("batchResult.scanResults")}</h2>
       <BatchResultsTable scans={batch.scans || []} />
     </div>
   );

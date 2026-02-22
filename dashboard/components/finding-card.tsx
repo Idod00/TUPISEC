@@ -7,6 +7,7 @@ import { SeverityBadge } from "./severity-badge";
 import { FindingStatusBadge } from "./finding-status-badge";
 import { FindingNoteDialog } from "./finding-note-dialog";
 import { getOwaspLink } from "@/lib/owasp";
+import { useI18n } from "@/lib/i18n/context";
 import type { Finding, FindingStatusRecord, FindingStatusValue } from "@/lib/types";
 
 interface FindingCardProps {
@@ -18,6 +19,7 @@ interface FindingCardProps {
 
 export function FindingCard({ finding, index, statusRecord, onStatusChange }: FindingCardProps) {
   const [open, setOpen] = useState(false);
+  const { t } = useI18n();
   const owasp = getOwaspLink(finding.category);
   const currentStatus = statusRecord?.status || "open";
   const currentNote = statusRecord?.note || "";
@@ -61,7 +63,7 @@ export function FindingCard({ finding, index, statusRecord, onStatusChange }: Fi
             <div className="space-y-3 text-sm">
               <div>
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                  Detail
+                  {t("finding.detail")}
                 </p>
                 <p className="text-foreground/80 whitespace-pre-wrap font-mono text-xs">
                   {finding.detail}
@@ -71,7 +73,7 @@ export function FindingCard({ finding, index, statusRecord, onStatusChange }: Fi
               {finding.recommendation && (
                 <div>
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                    Recommendation
+                    {t("finding.recommendation")}
                   </p>
                   <p className="text-primary/90">{finding.recommendation}</p>
                 </div>
@@ -80,7 +82,7 @@ export function FindingCard({ finding, index, statusRecord, onStatusChange }: Fi
               {currentNote && (
                 <div>
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                    Note
+                    {t("finding.note")}
                   </p>
                   <p className="text-foreground/70 text-xs">{currentNote}</p>
                 </div>
@@ -89,7 +91,7 @@ export function FindingCard({ finding, index, statusRecord, onStatusChange }: Fi
               {owasp && (
                 <div>
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                    OWASP Reference
+                    {t("finding.owaspRef")}
                   </p>
                   <a
                     href={owasp.url}

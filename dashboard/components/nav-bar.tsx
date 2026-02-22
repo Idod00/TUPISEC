@@ -4,16 +4,19 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Shield, History, Home, Layers, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/context";
+import type { TranslationKey } from "@/lib/i18n/translations";
 
-const links = [
-  { href: "/", label: "Dashboard", icon: Home },
-  { href: "/history", label: "History", icon: History },
-  { href: "/batch", label: "Batch", icon: Layers },
-  { href: "/schedules", label: "Schedules", icon: Clock },
+const links: { href: string; key: TranslationKey; icon: React.ElementType }[] = [
+  { href: "/", key: "nav.dashboard", icon: Home },
+  { href: "/history", key: "nav.history", icon: History },
+  { href: "/batch", key: "nav.batch", icon: Layers },
+  { href: "/schedules", key: "nav.schedules", icon: Clock },
 ];
 
 export function NavBar() {
   const pathname = usePathname();
+  const { lang, setLang, t } = useI18n();
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-md">
@@ -22,7 +25,7 @@ export function NavBar() {
           <Shield className="h-5 w-5" />
           <span className="text-lg">TupiSec</span>
         </Link>
-        <nav className="flex items-center gap-1">
+        <nav className="flex items-center gap-1 flex-1">
           {links.map((link) => {
             const Icon = link.icon;
             const active =
@@ -39,11 +42,38 @@ export function NavBar() {
                 )}
               >
                 <Icon className="h-4 w-4" />
-                {link.label}
+                {t(link.key)}
               </Link>
             );
           })}
         </nav>
+
+        {/* Language toggle */}
+        <div className="flex items-center rounded-md border border-border/60 overflow-hidden text-xs font-medium">
+          <button
+            onClick={() => setLang("es")}
+            className={cn(
+              "px-2.5 py-1 transition-colors",
+              lang === "es"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            ES
+          </button>
+          <span className="w-px h-4 bg-border/60" />
+          <button
+            onClick={() => setLang("en")}
+            className={cn(
+              "px-2.5 py-1 transition-colors",
+              lang === "en"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            EN
+          </button>
+        </div>
       </div>
     </header>
   );

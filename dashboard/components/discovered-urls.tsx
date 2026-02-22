@@ -1,11 +1,15 @@
+"use client";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Globe, ExternalLink } from "lucide-react";
+import { useI18n } from "@/lib/i18n/context";
 
 interface DiscoveredUrlsProps {
   urls: string[];
 }
 
 export function DiscoveredUrls({ urls }: DiscoveredUrlsProps) {
+  const { t } = useI18n();
   if (!urls || urls.length === 0) return null;
 
   return (
@@ -13,7 +17,7 @@ export function DiscoveredUrls({ urls }: DiscoveredUrlsProps) {
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
           <Globe className="h-4 w-4" />
-          Discovered URLs ({urls.length})
+          {t("discovery.title")} ({urls.length})
         </CardTitle>
       </CardHeader>
       <CardContent>

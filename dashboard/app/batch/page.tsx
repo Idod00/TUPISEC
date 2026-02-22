@@ -5,18 +5,20 @@ import { useRouter } from "next/navigation";
 import { Layers, Clock, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BatchForm } from "@/components/batch-form";
+import { useI18n } from "@/lib/i18n/context";
 import type { BatchRecord } from "@/lib/types";
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString("es-PY", {
-    dateStyle: "short",
-    timeStyle: "short",
-  });
-}
 
 export default function BatchPage() {
   const [batches, setBatches] = useState<BatchRecord[]>([]);
   const router = useRouter();
+  const { t, dateLocale } = useI18n();
+
+  function formatDate(iso: string) {
+    return new Date(iso).toLocaleString(dateLocale, {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
+  }
 
   useEffect(() => {
     fetch("/api/batches")
@@ -30,10 +32,10 @@ export default function BatchPage() {
       <div className="mb-8 text-center">
         <div className="inline-flex items-center gap-2 mb-3">
           <Layers className="h-8 w-8 text-primary" />
-          <h1 className="text-3xl font-bold">Batch Scan</h1>
+          <h1 className="text-3xl font-bold">{t("batch.title")}</h1>
         </div>
         <p className="text-muted-foreground">
-          Scan multiple URLs at once
+          {t("batch.subtitle")}
         </p>
       </div>
 
@@ -48,7 +50,7 @@ export default function BatchPage() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Clock className="h-4 w-4" />
-              Recent Batches
+              {t("batch.recentBatches")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -61,7 +63,7 @@ export default function BatchPage() {
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    <span className="text-sm">{batch.total_urls} URLs</span>
+                    <span className="text-sm">{batch.total_urls} {t("batch.urls")}</span>
                   </div>
                   <div className="flex items-center gap-3 shrink-0 ml-4">
                     <span className="text-xs text-muted-foreground">

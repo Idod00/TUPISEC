@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@/lib/i18n/context";
 import type { FindingStatusRecord } from "@/lib/types";
 
 interface RemediationProgressProps {
@@ -8,6 +9,7 @@ interface RemediationProgressProps {
 }
 
 export function RemediationProgress({ totalFindings, statuses }: RemediationProgressProps) {
+  const { t } = useI18n();
   const resolved = statuses.filter((s) => s.status === "resolved").length;
   const inProgress = statuses.filter((s) => s.status === "in_progress").length;
   const accepted = statuses.filter((s) => s.status === "accepted").length;
@@ -18,8 +20,8 @@ export function RemediationProgress({ totalFindings, statuses }: RemediationProg
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between text-sm">
-        <span className="text-muted-foreground">Remediation Progress</span>
-        <span className="font-mono text-primary">{resolved} / {totalFindings} resolved</span>
+        <span className="text-muted-foreground">{t("remediation.progress")}</span>
+        <span className="font-mono text-primary">{resolved} / {totalFindings} {t("remediation.resolved").toLowerCase()}</span>
       </div>
       <div className="h-3 w-full rounded-full bg-secondary overflow-hidden flex">
         {pct(resolved) > 0 && (
@@ -33,10 +35,10 @@ export function RemediationProgress({ totalFindings, statuses }: RemediationProg
         )}
       </div>
       <div className="flex gap-4 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-500" /> Resolved ({resolved})</span>
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-yellow-500" /> In Progress ({inProgress})</span>
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-blue-500" /> Accepted ({accepted})</span>
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-500" /> Open ({open})</span>
+        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-500" /> {t("remediation.resolved")} ({resolved})</span>
+        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-yellow-500" /> {t("remediation.inProgress")} ({inProgress})</span>
+        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-blue-500" /> {t("remediation.accepted")} ({accepted})</span>
+        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-500" /> {t("remediation.open")} ({open})</span>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Progress } from "@/components/ui/progress";
+import { useI18n } from "@/lib/i18n/context";
 
 interface BatchProgressProps {
   batchId: string;
@@ -18,6 +19,7 @@ interface BatchProgressData {
 
 export function BatchProgress({ batchId, onComplete }: BatchProgressProps) {
   const [progress, setProgress] = useState<BatchProgressData | null>(null);
+  const { t } = useI18n();
 
   useEffect(() => {
     const es = new EventSource(`/api/batch/${batchId}/stream`);
@@ -45,7 +47,7 @@ export function BatchProgress({ batchId, onComplete }: BatchProgressProps) {
   if (!progress) {
     return (
       <div className="text-sm text-muted-foreground animate-pulse">
-        Connecting to batch scan...
+        {t("batchProgress.connecting")}
       </div>
     );
   }
@@ -58,17 +60,17 @@ export function BatchProgress({ batchId, onComplete }: BatchProgressProps) {
       <Progress value={pct} className="h-3" />
       <div className="flex items-center justify-between text-sm">
         <span className="text-muted-foreground">
-          {done} of {progress.totalUrls} URLs scanned
+          {done} {t("batchProgress.scanned")} {progress.totalUrls} {t("batchProgress.urlsScanned")}
         </span>
         <span className="font-mono text-primary">{pct}%</span>
       </div>
       {progress.currentUrl && (
         <p className="text-xs text-muted-foreground truncate">
-          Scanning: <span className="font-mono">{progress.currentUrl}</span>
+          {t("batchProgress.scanning")} <span className="font-mono">{progress.currentUrl}</span>
         </p>
       )}
       {progress.failedUrls > 0 && (
-        <p className="text-xs text-red-400">{progress.failedUrls} failed</p>
+        <p className="text-xs text-red-400">{progress.failedUrls} {t("batchProgress.failed")}</p>
       )}
     </div>
   );

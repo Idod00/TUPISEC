@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Clock, Plus, Trash2, Loader2 } from "lucide-react";
+import { useI18n } from "@/lib/i18n/context";
 import type { ScheduleRecord } from "@/lib/types";
 
 export default function SchedulesPage() {
@@ -29,6 +30,7 @@ export default function SchedulesPage() {
   const [url, setUrl] = useState("");
   const [interval, setInterval] = useState<"daily" | "weekly" | "monthly">("daily");
   const [submitting, setSubmitting] = useState(false);
+  const { t } = useI18n();
 
   const fetchSchedules = () => {
     fetch("/api/schedules")
@@ -72,17 +74,17 @@ export default function SchedulesPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Clock className="h-6 w-6" />
-          Scheduled Scans
+          {t("schedules.title")}
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Automatically re-scan targets on a schedule.
+          {t("schedules.subtitle")}
         </p>
       </div>
 
       {/* Add schedule form */}
       <Card className="border-border/50 mb-6">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">Add New Schedule</CardTitle>
+          <CardTitle className="text-sm font-medium">{t("schedules.addNew")}</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleAdd} className="flex gap-3">
@@ -98,9 +100,9 @@ export default function SchedulesPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="daily">Daily</SelectItem>
-                <SelectItem value="weekly">Weekly</SelectItem>
-                <SelectItem value="monthly">Monthly</SelectItem>
+                <SelectItem value="daily">{t("schedules.daily")}</SelectItem>
+                <SelectItem value="weekly">{t("schedules.weekly")}</SelectItem>
+                <SelectItem value="monthly">{t("schedules.monthly")}</SelectItem>
               </SelectContent>
             </Select>
             <Button type="submit" disabled={submitting}>
@@ -109,7 +111,7 @@ export default function SchedulesPage() {
               ) : (
                 <>
                   <Plus className="h-4 w-4 mr-1.5" />
-                  Add
+                  {t("schedules.add")}
                 </>
               )}
             </Button>
@@ -124,7 +126,7 @@ export default function SchedulesPage() {
         </div>
       ) : schedules.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground text-sm">
-          No schedules configured yet.
+          {t("schedules.none")}
         </div>
       ) : (
         <Card className="border-border/50">
@@ -132,11 +134,11 @@ export default function SchedulesPage() {
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead>Target URL</TableHead>
-                  <TableHead>Interval</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Last Run</TableHead>
-                  <TableHead>Next Run</TableHead>
+                  <TableHead>{t("schedules.targetUrl")}</TableHead>
+                  <TableHead>{t("schedules.interval")}</TableHead>
+                  <TableHead>{t("schedules.status")}</TableHead>
+                  <TableHead>{t("schedules.lastRun")}</TableHead>
+                  <TableHead>{t("schedules.nextRun")}</TableHead>
                   <TableHead className="w-[60px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -152,7 +154,7 @@ export default function SchedulesPage() {
                         variant="outline"
                         className={s.enabled ? "text-green-400 border-green-500/30" : "text-muted-foreground"}
                       >
-                        {s.enabled ? "Active" : "Paused"}
+                        {s.enabled ? t("schedules.active") : t("schedules.paused")}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">

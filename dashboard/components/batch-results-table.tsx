@@ -7,6 +7,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { getGrade, getGradeColor } from "@/lib/scoring";
+import { useI18n } from "@/lib/i18n/context";
 
 interface BatchScan {
   id: string;
@@ -38,9 +39,10 @@ function StatusIcon({ status }: { status: string }) {
 
 export function BatchResultsTable({ scans }: BatchResultsTableProps) {
   const router = useRouter();
+  const { t } = useI18n();
 
   if (scans.length === 0) {
-    return <p className="py-8 text-center text-muted-foreground">No scans yet.</p>;
+    return <p className="py-8 text-center text-muted-foreground">{t("common.noScans")}</p>;
   }
 
   return (
@@ -49,8 +51,8 @@ export function BatchResultsTable({ scans }: BatchResultsTableProps) {
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead>Target</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-center">Score</TableHead>
+            <TableHead>{t("grouped.status")}</TableHead>
+            <TableHead className="text-center">{t("grouped.latestScore")}</TableHead>
             <TableHead className="text-center">Findings</TableHead>
             <TableHead className="text-center text-red-400">C</TableHead>
             <TableHead className="text-center text-orange-400">H</TableHead>
