@@ -1,0 +1,162 @@
+======================================================================
+  TUPISEC - Web Security Analysis Report
+======================================================================
+  Target:    https://aplicaciones.tupisa.com.py/newsys/index.php
+  Base URL:  https://aplicaciones.tupisa.com.py
+  Date:      2026-02-21 08:24:11
+  Scanner:   TupiSec v1.0.0
+======================================================================
+
+  SUMMARY
+  ----------------------------------------
+  CRITICAL:  1
+  HIGH:      3
+  MEDIUM:    11
+  LOW:       3
+  INFO:      6
+  TOTAL:     24
+
+  TECHNOLOGY STACK
+  ----------------------------------------
+  server: nginx/1.18.0 (Ubuntu)
+  powered_by: PHP/5.6.24
+  language: PHP (PHP/5.6.24)
+  web_server: nginx/1.18.0 (Ubuntu)
+  bootstrap: ../css/bootstrap.css
+
+  DISCOVERED URLs
+  ----------------------------------------
+  https://aplicaciones.tupisa.com.py/css/bootstrap.css
+  https://aplicaciones.tupisa.com.py/manifest.json
+  https://aplicaciones.tupisa.com.py/newsys/css/bootstrap.css
+  https://aplicaciones.tupisa.com.py/newsys/css/geolocation.css
+  https://aplicaciones.tupisa.com.py/newsys/imagenes/Tupi.png
+  https://aplicaciones.tupisa.com.py/newsys/index.php
+
+  DETAILED FINDINGS
+  ----------------------------------------
+
+  [CRITICAL] #1: Possible SQLi in field 'nombre'
+  Category: SQL Injection
+  Detail:   Payload: ' OR '1'='1
+SQL error pattern found: 'warning:'
+  Fix:      Use parameterized queries / prepared statements.
+
+  [HIGH] #2: Missing: Strict-Transport-Security
+  Category: Missing Security Header
+  Detail:   The response does not include the Strict-Transport-Security header.
+  Fix:      Add the Strict-Transport-Security header to all responses.
+
+  [HIGH] #3: Missing: Content-Security-Policy
+  Category: Missing Security Header
+  Detail:   The response does not include the Content-Security-Policy header.
+  Fix:      Add the Content-Security-Policy header to all responses.
+
+  [HIGH] #4: No CSRF token detected
+  Category: CSRF
+  Detail:   Form #1 (action='/newsys/index.php') has no CSRF protection.
+  Fix:      Implement CSRF tokens in all forms.
+
+  [MEDIUM] #5: Missing: X-Content-Type-Options
+  Category: Missing Security Header
+  Detail:   The response does not include the X-Content-Type-Options header.
+  Fix:      Add the X-Content-Type-Options header to all responses.
+
+  [MEDIUM] #6: Missing: X-Frame-Options
+  Category: Missing Security Header
+  Detail:   The response does not include the X-Frame-Options header.
+  Fix:      Add the X-Frame-Options header to all responses.
+
+  [MEDIUM] #7: Missing: X-XSS-Protection
+  Category: Missing Security Header
+  Detail:   The response does not include the X-XSS-Protection header.
+  Fix:      Add the X-XSS-Protection header to all responses.
+
+  [MEDIUM] #8: Missing: Referrer-Policy
+  Category: Missing Security Header
+  Detail:   The response does not include the Referrer-Policy header.
+  Fix:      Add the Referrer-Policy header to all responses.
+
+  [MEDIUM] #9: Missing: Permissions-Policy
+  Category: Missing Security Header
+  Detail:   The response does not include the Permissions-Policy header.
+  Fix:      Add the Permissions-Policy header to all responses.
+
+  [MEDIUM] #10: Missing: Cross-Origin-Embedder-Policy
+  Category: Missing Security Header
+  Detail:   The response does not include the Cross-Origin-Embedder-Policy header.
+  Fix:      Add the Cross-Origin-Embedder-Policy header to all responses.
+
+  [MEDIUM] #11: Missing: Cross-Origin-Opener-Policy
+  Category: Missing Security Header
+  Detail:   The response does not include the Cross-Origin-Opener-Policy header.
+  Fix:      Add the Cross-Origin-Opener-Policy header to all responses.
+
+  [MEDIUM] #12: Missing: Cross-Origin-Resource-Policy
+  Category: Missing Security Header
+  Detail:   The response does not include the Cross-Origin-Resource-Policy header.
+  Fix:      Add the Cross-Origin-Resource-Policy header to all responses.
+
+  [MEDIUM] #13: Insecure cookie: PHPSESSID
+  Category: Cookie Security
+  Detail:   Issues: Missing Secure flag, Missing HttpOnly flag, Missing SameSite attribute
+  Fix:      Set Secure, HttpOnly, and SameSite attributes on all cookies.
+
+  [MEDIUM] #14: Accessible: phpmyadmin/
+  Category: Sensitive File/Directory
+  Detail:   URL: https://aplicaciones.tupisa.com.py/phpmyadmin/ (Status: 200, Size: 9481 bytes)
+  Fix:      Restrict access to sensitive files and directories.
+
+  [MEDIUM] #15: Accessible: info.php
+  Category: Sensitive File/Directory
+  Detail:   URL: https://aplicaciones.tupisa.com.py/info.php (Status: 200, Size: 102733 bytes)
+  Fix:      Restrict access to sensitive files and directories.
+
+  [LOW] #16: Server header exposed
+  Category: Information Disclosure
+  Detail:   Server: nginx/1.18.0 (Ubuntu)
+  Fix:      Remove or obfuscate the Server header.
+
+  [LOW] #17: X-Powered-By header exposed
+  Category: Information Disclosure
+  Detail:   X-Powered-By: PHP/5.6.24
+  Fix:      Remove the X-Powered-By header in production.
+
+  [LOW] #18: Password autocomplete enabled
+  Category: Form Security
+  Detail:   Form #1 has password field without autocomplete='off'.
+  Fix:      Set autocomplete='off' on password fields.
+
+  [INFO] #19: Forbidden but exists: .htaccess
+  Category: Directory Enumeration
+  Detail:   URL: https://aplicaciones.tupisa.com.py/.htaccess returned 403 Forbidden.
+  Fix:      Ensure 403 responses don't leak information.
+
+  [INFO] #20: Forbidden but exists: cgi-bin/
+  Category: Directory Enumeration
+  Detail:   URL: https://aplicaciones.tupisa.com.py/cgi-bin/ returned 403 Forbidden.
+  Fix:      Ensure 403 responses don't leak information.
+
+  [INFO] #21: Port 22/tcp open: ssh
+  Category: Open Port
+  Detail:   Service: ssh 
+  Fix:      Ensure only necessary ports are exposed.
+
+  [INFO] #22: Port 111/tcp open: rpcbind
+  Category: Open Port
+  Detail:   Service: rpcbind 
+  Fix:      Ensure only necessary ports are exposed.
+
+  [INFO] #23: Port 2000/tcp open: cisco-sccp
+  Category: Open Port
+  Detail:   Service: cisco-sccp 
+  Fix:      Ensure only necessary ports are exposed.
+
+  [INFO] #24: Port 5060/tcp open: sip
+  Category: Open Port
+  Detail:   Service: sip 
+  Fix:      Ensure only necessary ports are exposed.
+
+======================================================================
+  END OF REPORT
+======================================================================

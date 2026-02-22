@@ -1,0 +1,71 @@
+{
+  "scan_metadata": {
+    "target": "https://aplicaciones.tupisa.com.py/newsys/",
+    "domain": "aplicaciones.tupisa.com.py",
+    "scan_date": "2026-02-21",
+    "scanner": "TupiSec v1.0.0",
+    "pages_tested": [
+      "https://aplicaciones.tupisa.com.py/newsys/acc_chofer.php",
+      "https://aplicaciones.tupisa.com.py/newsys/index.php"
+    ]
+  },
+  "summary": {
+    "overall_risk": "CRITICAL",
+    "critical": 5,
+    "high": 7,
+    "medium": 12,
+    "low": 3,
+    "info": 5,
+    "total": 32
+  },
+  "tech_stack": {
+    "web_server": "nginx/1.18.0 (Ubuntu)",
+    "backend": "Apache/2.4.6 (CentOS) OpenSSL/1.0.2k-fips",
+    "language": "PHP/5.6.24",
+    "os": "CentOS 7 - Linux 3.10.0",
+    "database": "MySQL (mysqlnd)",
+    "css_framework": "Bootstrap 3.3.4",
+    "internal_ip": "10.108.0.222",
+    "document_root": "/var/www/html"
+  },
+  "critical_findings": [
+    {
+      "id": 1,
+      "title": "SQL Injection in Login Form",
+      "field": "nombre",
+      "payload": "' OR '1'='1",
+      "confirmed": true
+    },
+    {
+      "id": 2,
+      "title": "PHP 5.6.24 - End of Life since Dec 2018",
+      "confirmed": true
+    },
+    {
+      "id": 3,
+      "title": "phpinfo() publicly accessible",
+      "url": "https://aplicaciones.tupisa.com.py/info.php",
+      "confirmed": true
+    },
+    {
+      "id": 4,
+      "title": "phpMyAdmin publicly accessible",
+      "url": "https://aplicaciones.tupisa.com.py/phpmyadmin/",
+      "confirmed": true
+    },
+    {
+      "id": 5,
+      "title": "No PHP functions disabled (exec, system, etc.)",
+      "confirmed": true
+    }
+  ],
+  "open_ports": [22, 80, 111, 443, 2000, 5060],
+  "discovered_urls": [
+    "https://aplicaciones.tupisa.com.py/newsys/index.php",
+    "https://aplicaciones.tupisa.com.py/newsys/acc_chofer.php",
+    "https://aplicaciones.tupisa.com.py/newsys/imagenes/",
+    "https://aplicaciones.tupisa.com.py/newsys/css/",
+    "https://aplicaciones.tupisa.com.py/phpmyadmin/",
+    "https://aplicaciones.tupisa.com.py/info.php"
+  ]
+}

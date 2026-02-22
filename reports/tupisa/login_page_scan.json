@@ -1,0 +1,221 @@
+{
+  "target": "https://aplicaciones.tupisa.com.py/newsys/index.php",
+  "base_url": "https://aplicaciones.tupisa.com.py",
+  "scan_date": "2026-02-21T08:24:11.527561",
+  "summary": {
+    "LOW": 3,
+    "HIGH": 3,
+    "MEDIUM": 11,
+    "CRITICAL": 1,
+    "INFO": 6
+  },
+  "tech_stack": {
+    "server": "nginx/1.18.0 (Ubuntu)",
+    "powered_by": "PHP/5.6.24",
+    "language": "PHP (PHP/5.6.24)",
+    "web_server": "nginx/1.18.0 (Ubuntu)",
+    "bootstrap": "../css/bootstrap.css"
+  },
+  "discovered_urls": [
+    "https://aplicaciones.tupisa.com.py/manifest.json",
+    "https://aplicaciones.tupisa.com.py/css/bootstrap.css",
+    "https://aplicaciones.tupisa.com.py/newsys/imagenes/Tupi.png",
+    "https://aplicaciones.tupisa.com.py/newsys/index.php",
+    "https://aplicaciones.tupisa.com.py/newsys/css/geolocation.css",
+    "https://aplicaciones.tupisa.com.py/newsys/css/bootstrap.css"
+  ],
+  "findings": [
+    {
+      "severity": "CRITICAL",
+      "category": "SQL Injection",
+      "title": "Possible SQLi in field 'nombre'",
+      "detail": "Payload: ' OR '1'='1\nSQL error pattern found: 'warning:'",
+      "recommendation": "Use parameterized queries / prepared statements.",
+      "timestamp": "2026-02-21T08:24:07.262566"
+    },
+    {
+      "severity": "HIGH",
+      "category": "Missing Security Header",
+      "title": "Missing: Strict-Transport-Security",
+      "detail": "The response does not include the Strict-Transport-Security header.",
+      "recommendation": "Add the Strict-Transport-Security header to all responses.",
+      "timestamp": "2026-02-21T08:24:06.469601"
+    },
+    {
+      "severity": "HIGH",
+      "category": "Missing Security Header",
+      "title": "Missing: Content-Security-Policy",
+      "detail": "The response does not include the Content-Security-Policy header.",
+      "recommendation": "Add the Content-Security-Policy header to all responses.",
+      "timestamp": "2026-02-21T08:24:06.469613"
+    },
+    {
+      "severity": "HIGH",
+      "category": "CSRF",
+      "title": "No CSRF token detected",
+      "detail": "Form #1 (action='/newsys/index.php') has no CSRF protection.",
+      "recommendation": "Implement CSRF tokens in all forms.",
+      "timestamp": "2026-02-21T08:24:06.606044"
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "Missing Security Header",
+      "title": "Missing: X-Content-Type-Options",
+      "detail": "The response does not include the X-Content-Type-Options header.",
+      "recommendation": "Add the X-Content-Type-Options header to all responses.",
+      "timestamp": "2026-02-21T08:24:06.469623"
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "Missing Security Header",
+      "title": "Missing: X-Frame-Options",
+      "detail": "The response does not include the X-Frame-Options header.",
+      "recommendation": "Add the X-Frame-Options header to all responses.",
+      "timestamp": "2026-02-21T08:24:06.469633"
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "Missing Security Header",
+      "title": "Missing: X-XSS-Protection",
+      "detail": "The response does not include the X-XSS-Protection header.",
+      "recommendation": "Add the X-XSS-Protection header to all responses.",
+      "timestamp": "2026-02-21T08:24:06.469643"
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "Missing Security Header",
+      "title": "Missing: Referrer-Policy",
+      "detail": "The response does not include the Referrer-Policy header.",
+      "recommendation": "Add the Referrer-Policy header to all responses.",
+      "timestamp": "2026-02-21T08:24:06.469652"
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "Missing Security Header",
+      "title": "Missing: Permissions-Policy",
+      "detail": "The response does not include the Permissions-Policy header.",
+      "recommendation": "Add the Permissions-Policy header to all responses.",
+      "timestamp": "2026-02-21T08:24:06.469662"
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "Missing Security Header",
+      "title": "Missing: Cross-Origin-Embedder-Policy",
+      "detail": "The response does not include the Cross-Origin-Embedder-Policy header.",
+      "recommendation": "Add the Cross-Origin-Embedder-Policy header to all responses.",
+      "timestamp": "2026-02-21T08:24:06.469672"
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "Missing Security Header",
+      "title": "Missing: Cross-Origin-Opener-Policy",
+      "detail": "The response does not include the Cross-Origin-Opener-Policy header.",
+      "recommendation": "Add the Cross-Origin-Opener-Policy header to all responses.",
+      "timestamp": "2026-02-21T08:24:06.469684"
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "Missing Security Header",
+      "title": "Missing: Cross-Origin-Resource-Policy",
+      "detail": "The response does not include the Cross-Origin-Resource-Policy header.",
+      "recommendation": "Add the Cross-Origin-Resource-Policy header to all responses.",
+      "timestamp": "2026-02-21T08:24:06.469694"
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "Cookie Security",
+      "title": "Insecure cookie: PHPSESSID",
+      "detail": "Issues: Missing Secure flag, Missing HttpOnly flag, Missing SameSite attribute",
+      "recommendation": "Set Secure, HttpOnly, and SameSite attributes on all cookies.",
+      "timestamp": "2026-02-21T08:24:06.469713"
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "Sensitive File/Directory",
+      "title": "Accessible: phpmyadmin/",
+      "detail": "URL: https://aplicaciones.tupisa.com.py/phpmyadmin/ (Status: 200, Size: 9481 bytes)",
+      "recommendation": "Restrict access to sensitive files and directories.",
+      "timestamp": "2026-02-21T08:24:07.721917"
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "Sensitive File/Directory",
+      "title": "Accessible: info.php",
+      "detail": "URL: https://aplicaciones.tupisa.com.py/info.php (Status: 200, Size: 102733 bytes)",
+      "recommendation": "Restrict access to sensitive files and directories.",
+      "timestamp": "2026-02-21T08:24:08.230345"
+    },
+    {
+      "severity": "LOW",
+      "category": "Information Disclosure",
+      "title": "Server header exposed",
+      "detail": "Server: nginx/1.18.0 (Ubuntu)",
+      "recommendation": "Remove or obfuscate the Server header.",
+      "timestamp": "2026-02-21T08:24:06.469547"
+    },
+    {
+      "severity": "LOW",
+      "category": "Information Disclosure",
+      "title": "X-Powered-By header exposed",
+      "detail": "X-Powered-By: PHP/5.6.24",
+      "recommendation": "Remove the X-Powered-By header in production.",
+      "timestamp": "2026-02-21T08:24:06.469587"
+    },
+    {
+      "severity": "LOW",
+      "category": "Form Security",
+      "title": "Password autocomplete enabled",
+      "detail": "Form #1 has password field without autocomplete='off'.",
+      "recommendation": "Set autocomplete='off' on password fields.",
+      "timestamp": "2026-02-21T08:24:06.606108"
+    },
+    {
+      "severity": "INFO",
+      "category": "Directory Enumeration",
+      "title": "Forbidden but exists: .htaccess",
+      "detail": "URL: https://aplicaciones.tupisa.com.py/.htaccess returned 403 Forbidden.",
+      "recommendation": "Ensure 403 responses don't leak information.",
+      "timestamp": "2026-02-21T08:24:07.965870"
+    },
+    {
+      "severity": "INFO",
+      "category": "Directory Enumeration",
+      "title": "Forbidden but exists: cgi-bin/",
+      "detail": "URL: https://aplicaciones.tupisa.com.py/cgi-bin/ returned 403 Forbidden.",
+      "recommendation": "Ensure 403 responses don't leak information.",
+      "timestamp": "2026-02-21T08:24:08.737663"
+    },
+    {
+      "severity": "INFO",
+      "category": "Open Port",
+      "title": "Port 22/tcp open: ssh",
+      "detail": "Service: ssh ",
+      "recommendation": "Ensure only necessary ports are exposed.",
+      "timestamp": "2026-02-21T08:24:11.525722"
+    },
+    {
+      "severity": "INFO",
+      "category": "Open Port",
+      "title": "Port 111/tcp open: rpcbind",
+      "detail": "Service: rpcbind ",
+      "recommendation": "Ensure only necessary ports are exposed.",
+      "timestamp": "2026-02-21T08:24:11.525798"
+    },
+    {
+      "severity": "INFO",
+      "category": "Open Port",
+      "title": "Port 2000/tcp open: cisco-sccp",
+      "detail": "Service: cisco-sccp ",
+      "recommendation": "Ensure only necessary ports are exposed.",
+      "timestamp": "2026-02-21T08:24:11.525844"
+    },
+    {
+      "severity": "INFO",
+      "category": "Open Port",
+      "title": "Port 5060/tcp open: sip",
+      "detail": "Service: sip ",
+      "recommendation": "Ensure only necessary ports are exposed.",
+      "timestamp": "2026-02-21T08:24:11.525879"
+    }
+  ]
+}

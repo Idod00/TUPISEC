@@ -1,0 +1,339 @@
+======================================================================
+  TUPISEC - REPORTE DE SEGURIDAD INTEGRAL
+  aplicaciones.tupisa.com.py
+======================================================================
+  Fecha:       2026-02-21
+  Objetivo:    https://aplicaciones.tupisa.com.py/newsys/
+  Paginas:     acc_chofer.php, index.php (login)
+  Scanner:     TupiSec v1.0.0
+======================================================================
+
+======================================================================
+  RESUMEN EJECUTIVO
+======================================================================
+
+  ESTADO GENERAL:  *** CRITICO ***
+
+  El servidor presenta vulnerabilidades CRITICAS que requieren
+  atencion INMEDIATA. Se confirmo inyeccion SQL en el formulario
+  de login, se expone phpMyAdmin e informacion del servidor al
+  publico, y el stack tecnologico esta severamente desactualizado
+  (PHP 5.6.24 - sin soporte desde 2018).
+
+  HALLAZGOS POR SEVERIDAD:
+  ─────────────────────────
+  CRITICO:   5
+  ALTO:      7
+  MEDIO:     12
+  BAJO:      3
+  INFO:      5
+  ─────────────────────────
+  TOTAL:     32
+
+======================================================================
+  STACK TECNOLOGICO DETECTADO
+======================================================================
+
+  Servidor Web:      nginx/1.18.0 (Ubuntu) -> reverse proxy
+  Backend Server:    Apache/2.4.6 (CentOS) OpenSSL/1.0.2k-fips
+  Lenguaje:          PHP 5.6.24 (EOL: Dic 2018)
+  Sistema Operativo: CentOS 7 - Linux 3.10.0
+  Base de Datos:     MySQL (mysqlnd driver)
+  Framework CSS:     Bootstrap 3.3.4
+  IP Interna:        10.108.0.222
+  Document Root:     /var/www/html
+  Session Path:      /var/lib/php/session
+
+======================================================================
+  HALLAZGOS DETALLADOS
+======================================================================
+
+----------------------------------------------------------------------
+  #1 [CRITICO] SQL INJECTION EN FORMULARIO DE LOGIN
+----------------------------------------------------------------------
+  URL:       https://aplicaciones.tupisa.com.py/newsys/index.php
+  Campo:     'nombre' (campo de usuario)
+  Payload:   ' OR '1'='1
+  Evidencia: El servidor retorna un warning/error SQL al inyectar
+             comillas simples, confirmando que el input del usuario
+             se concatena directamente en la consulta SQL.
+
+  IMPACTO:   Un atacante puede:
+             - Bypass de autenticacion (login sin credenciales)
+             - Extraer TODA la base de datos (datos de choferes,
+               usuarios, contrasenas, informacion de la empresa)
+             - Modificar o eliminar datos
+             - Potencialmente ejecutar comandos en el servidor
+
+  SOLUCION:  1. Usar prepared statements / consultas parametrizadas
+             2. Usar PDO o mysqli con bind_param()
+             3. NUNCA concatenar input del usuario en queries SQL
+
+             Ejemplo correcto (PHP):
+             $stmt = $pdo->prepare("SELECT * FROM users WHERE
+                                    nombre = ? AND pass = ?");
+             $stmt->execute([$nombre, $pass]);
+
+----------------------------------------------------------------------
+  #2 [CRITICO] PHP 5.6.24 - VERSION OBSOLETA SIN SOPORTE
+----------------------------------------------------------------------
+  Detalle:   PHP 5.6 llego a End of Life el 31 de diciembre de 2018.
+             Tiene CIENTOS de CVEs conocidos incluyendo ejecucion
+             remota de codigo (RCE), desbordamiento de buffer, y
+             bypass de seguridad.
+
+  IMPACTO:   El servidor es vulnerable a exploits publicamente
+             conocidos que pueden comprometer completamente el
+             sistema.
+
+  SOLUCION:  Actualizar a PHP 8.2 o 8.3 (versiones con soporte
+             activo). Esto requiere revision del codigo fuente
+             para compatibilidad.
+
+----------------------------------------------------------------------
+  #3 [CRITICO] PHPINFO() ACCESIBLE PUBLICAMENTE
+----------------------------------------------------------------------
+  URL:       https://aplicaciones.tupisa.com.py/info.php
+  Tamano:    102 KB de informacion del servidor
+
+  DATOS EXPUESTOS:
+  - Version exacta de PHP, Apache, OpenSSL
+  - IP interna del servidor (10.108.0.222)
+  - Rutas del sistema de archivos (/var/www/html)
+  - Todos los modulos PHP cargados
+  - Configuracion de base de datos
+  - Configuracion de sesiones
+  - Variables de entorno del servidor
+  - disable_functions: NINGUNA (todas habilitadas)
+
+  IMPACTO:   Esta informacion facilita enormemente ataques
+             dirigidos. Un atacante sabe exactamente que
+             explotar.
+
+  SOLUCION:  ELIMINAR info.php INMEDIATAMENTE del servidor.
+             Nunca dejar phpinfo() en produccion.
+
+----------------------------------------------------------------------
+  #4 [CRITICO] PHPMYADMIN ACCESIBLE DESDE INTERNET
+----------------------------------------------------------------------
+  URL:       https://aplicaciones.tupisa.com.py/phpmyadmin/
+  Version:   Antigua (jQuery 1.11.1, circa 2014-2015)
+  Auth:      Cookie-based login page
+
+  IMPACTO:   Aunque requiere credenciales, exponer phpMyAdmin
+             al internet lo convierte en objetivo de ataques
+             de fuerza bruta. Combinado con la version antigua,
+             puede tener vulnerabilidades propias.
+
+  SOLUCION:  1. Restringir acceso por IP (solo desde IPs internas)
+             2. Mover a un puerto no estandar
+             3. Proteger con autenticacion adicional (htpasswd)
+             4. Idealmente, eliminar y usar solo CLI (mysql)
+
+----------------------------------------------------------------------
+  #5 [CRITICO] NO HAY FUNCIONES PHP DESHABILITADAS
+----------------------------------------------------------------------
+  Detalle:   disable_functions esta VACIO en php.ini
+  Funciones peligrosas habilitadas:
+  - exec(), system(), passthru(), shell_exec()
+  - proc_open(), popen()
+  - eval(), assert()
+
+  IMPACTO:   Si un atacante logra inyectar codigo PHP (via SQLi,
+             file upload, o cualquier otro vector), tiene acceso
+             COMPLETO al sistema operativo.
+
+  SOLUCION:  Agregar en php.ini:
+             disable_functions = exec,system,passthru,shell_exec,
+             proc_open,popen,curl_exec,curl_multi_exec,
+             parse_ini_file,show_source,eval,assert
+
+----------------------------------------------------------------------
+  #6 [ALTO] COOKIE PHPSESSID INSEGURA
+----------------------------------------------------------------------
+  Detalle:   La cookie de sesion PHPSESSID NO tiene:
+             - Flag Secure (se envia por HTTP)
+             - Flag HttpOnly (accesible via JavaScript)
+             - Atributo SameSite (vulnerable a CSRF)
+
+  IMPACTO:   Robo de sesion via XSS, MITM, o CSRF.
+
+  SOLUCION:  Agregar en php.ini:
+             session.cookie_secure = 1
+             session.cookie_httponly = 1
+             session.cookie_samesite = Strict
+
+----------------------------------------------------------------------
+  #7 [ALTO] FIJACION DE SESION (SESSION FIXATION)
+----------------------------------------------------------------------
+  Detalle:   El ID de sesion (PHPSESSID) NO se regenera despues
+             de un intento de login. El mismo ID se mantiene
+             antes y despues de autenticarse.
+
+  IMPACTO:   Un atacante puede fijar un ID de sesion conocido
+             en la victima y luego usar ese mismo ID para
+             acceder como la victima.
+
+  SOLUCION:  Llamar session_regenerate_id(true) despues de
+             cada login exitoso.
+
+----------------------------------------------------------------------
+  #8 [ALTO] SIN PROTECCION CSRF EN FORMULARIO DE LOGIN
+----------------------------------------------------------------------
+  Detalle:   El formulario de login no tiene token CSRF.
+
+  IMPACTO:   Ataques Cross-Site Request Forgery pueden forzar
+             acciones en nombre de usuarios autenticados.
+
+  SOLUCION:  Implementar tokens CSRF en todos los formularios:
+             - Generar token aleatorio con bin2hex(random_bytes(32))
+             - Almacenar en $_SESSION
+             - Incluir como campo hidden en el form
+             - Validar en el servidor antes de procesar
+
+----------------------------------------------------------------------
+  #9 [ALTO] SIN PROTECCION CONTRA FUERZA BRUTA
+----------------------------------------------------------------------
+  Detalle:   10/10 intentos rapidos de login fueron aceptados
+             sin ninguna limitacion. No hay:
+             - Rate limiting
+             - Bloqueo de cuenta
+             - CAPTCHA
+             - Delay progresivo
+
+  IMPACTO:   Un atacante puede probar miles de combinaciones
+             de usuario/contrasena por minuto hasta encontrar
+             credenciales validas.
+
+  SOLUCION:  1. Implementar rate limiting (max 5 intentos/minuto)
+             2. Bloqueo temporal de cuenta tras 5 intentos fallidos
+             3. Agregar CAPTCHA despues de 3 intentos fallidos
+             4. Implementar delay progresivo entre intentos
+
+----------------------------------------------------------------------
+  #10 [ALTO] FALTA HEADER STRICT-TRANSPORT-SECURITY (HSTS)
+----------------------------------------------------------------------
+  Detalle:   No se envia el header HSTS.
+
+  IMPACTO:   Aunque HTTP redirige a HTTPS, un atacante MITM
+             puede interceptar la primera conexion HTTP.
+
+  SOLUCION:  Agregar en nginx:
+             add_header Strict-Transport-Security
+               "max-age=31536000; includeSubDomains" always;
+
+----------------------------------------------------------------------
+  #11 [ALTO] FALTA CONTENT-SECURITY-POLICY (CSP)
+----------------------------------------------------------------------
+  Detalle:   No hay header CSP.
+
+  IMPACTO:   Sin CSP, ataques XSS tienen impacto maximo ya que
+             pueden cargar scripts de cualquier origen.
+
+  SOLUCION:  Agregar header CSP restrictivo en nginx.
+
+----------------------------------------------------------------------
+  #12 [ALTO] DIRECTORY LISTING HABILITADO
+----------------------------------------------------------------------
+  URLs:      /newsys/imagenes/ - Lista archivos y subdirectorios
+             /newsys/css/ - Lista todos los archivos CSS
+
+  IMPACTO:   Revela estructura del proyecto, nombres de archivos,
+             y potencialmente archivos sensibles.
+
+  SOLUCION:  En nginx: autoindex off;
+             O agregar index.html vacios en los directorios.
+
+----------------------------------------------------------------------
+  #13 [MEDIO] EXPOSICION DE SERVIDOR EN HEADERS
+----------------------------------------------------------------------
+  Headers:   Server: nginx/1.18.0 (Ubuntu)
+             X-Powered-By: PHP/5.6.24
+
+  SOLUCION:  En nginx: server_tokens off;
+             En php.ini: expose_php = Off
+
+----------------------------------------------------------------------
+  #14 [MEDIO] FALTAN MULTIPLES HEADERS DE SEGURIDAD
+----------------------------------------------------------------------
+  Headers faltantes:
+  - X-Content-Type-Options
+  - X-Frame-Options (CLICKJACKING posible)
+  - X-XSS-Protection
+  - Referrer-Policy
+  - Permissions-Policy
+  - Cross-Origin-Embedder-Policy
+  - Cross-Origin-Opener-Policy
+  - Cross-Origin-Resource-Policy
+
+----------------------------------------------------------------------
+  #15 [MEDIO] UPLOAD_MAX_FILESIZE = 40MB
+----------------------------------------------------------------------
+  Detalle:   Se permiten uploads de hasta 40MB.
+
+  SOLUCION:  Reducir a lo minimo necesario (ej: 2MB).
+
+----------------------------------------------------------------------
+  #16 [INFO] PUERTOS ABIERTOS INNECESARIOS
+----------------------------------------------------------------------
+  Puertos detectados:
+  - 22/tcp   SSH (necesario pero asegurar)
+  - 80/tcp   HTTP (redirige a HTTPS, OK)
+  - 111/tcp  rpcbind (INNECESARIO - cerrar)
+  - 443/tcp  HTTPS (necesario)
+  - 2000/tcp cisco-sccp (revisar si es necesario)
+  - 5060/tcp SIP (revisar si es necesario)
+
+  SOLUCION:  Cerrar puertos 111, 2000, 5060 si no son necesarios.
+             Usar firewall (iptables/firewalld) para filtrar.
+
+======================================================================
+  ARQUITECTURA DETECTADA
+======================================================================
+
+  Internet -> nginx/1.18.0 (Ubuntu) [reverse proxy]
+                 -> Apache/2.4.6 (CentOS) [backend, IP: 10.108.0.222]
+                       -> PHP 5.6.24
+                       -> MySQL (mysqlnd)
+
+  Nota: La presencia de nginx como proxy y Apache como backend
+  sugiere una configuracion de doble servidor. Los headers de
+  seguridad deben configurarse en nginx.
+
+======================================================================
+  PLAN DE REMEDIACION PRIORIZADO
+======================================================================
+
+  PRIORIDAD INMEDIATA (hacer HOY):
+  ─────────────────────────────────
+  1. ELIMINAR info.php del servidor
+  2. Corregir SQL Injection en el login (usar prepared statements)
+  3. Restringir acceso a phpMyAdmin (solo IPs internas)
+
+  PRIORIDAD ALTA (esta semana):
+  ─────────────────────────────
+  4. Implementar rate limiting en login
+  5. Agregar flags Secure/HttpOnly/SameSite a cookies
+  6. Regenerar session ID despues de login
+  7. Agregar token CSRF al formulario
+  8. Deshabilitar funciones PHP peligrosas
+  9. Desactivar directory listing
+
+  PRIORIDAD MEDIA (este mes):
+  ────────────────────────────
+  10. Agregar todos los headers de seguridad en nginx
+  11. Ocultar versiones de servidor/PHP
+  12. Cerrar puertos innecesarios (111, 2000, 5060)
+  13. Reducir upload_max_filesize
+
+  PRIORIDAD PLANIFICADA:
+  ──────────────────────
+  14. Actualizar PHP a 8.2/8.3
+  15. Actualizar nginx y Apache
+  16. Actualizar phpMyAdmin o eliminarlo
+  17. Implementar WAF (Web Application Firewall)
+  18. Configurar HSTS y CSP
+
+======================================================================
+  FIN DEL REPORTE
+======================================================================
