@@ -34,6 +34,7 @@ export interface ScanReport {
   dns_records?: DnsRecord[];
   whois_info?: Record<string, string>;
   cve_data?: CveRecord[];
+  subdomains?: SubdomainEntry[];
 }
 
 export interface ScanRecord {
@@ -91,4 +92,48 @@ export interface FindingStatusRecord {
   status: FindingStatusValue;
   note: string;
   updated_at: string;
+}
+
+export interface NotificationConfig {
+  id: string;
+  name: string;
+  type: "slack" | "webhook";
+  url: string;
+  enabled: number;
+  notify_on_complete: number;
+  notify_on_critical: number;
+  min_risk_score: number;
+  created_at: string;
+}
+
+export interface VirusTotalData {
+  malicious: number;
+  suspicious: number;
+  harmless: number;
+  undetected: number;
+  categories: string[];
+  reputation: number;
+  last_analysis_date: string;
+}
+
+export interface ShodanData {
+  ip: string;
+  org: string;
+  country: string;
+  open_ports: number[];
+  vulns: string[];
+  services: { port: number; transport: string; product?: string }[];
+}
+
+export interface EnrichmentData {
+  virustotal?: VirusTotalData;
+  shodan?: ShodanData;
+  fetched_at: string;
+}
+
+export interface SubdomainEntry {
+  subdomain: string;
+  ip: string;
+  status: number;
+  takeover_risk: boolean;
 }

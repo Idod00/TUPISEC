@@ -3,6 +3,8 @@ import { randomUUID } from "crypto";
 import { listSchedules, createScan, completeScan, failScan, updateScheduleRun, getSchedule } from "./db";
 import { runScan } from "./scanner";
 import { calculateScore } from "./scoring";
+import { dispatchNotifications } from "./notifications";
+import { enrichScan } from "./enrichment";
 import type { ScheduleRecord } from "./types";
 
 const CRON_MAP: Record<ScheduleRecord["interval"], string> = {
@@ -38,6 +40,8 @@ function executeSchedule(scheduleId: string) {
       const now = new Date().toISOString();
       const nextRun = computeNextRun(schedule.cron_expr);
       updateScheduleRun(scheduleId, now, nextRun);
+      dispatchNotifications(scanId, schedule.target_url, score, report).catch(() => {});
+      enrichScan(scanId).catch(() => {});
     },
     () => {
       failScan(scanId);

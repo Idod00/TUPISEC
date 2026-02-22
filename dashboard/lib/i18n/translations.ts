@@ -7,6 +7,7 @@ export const translations = {
     "nav.history": "History",
     "nav.batch": "Batch",
     "nav.schedules": "Schedules",
+    "nav.settings": "Settings",
 
     // Home
     "home.subtitle": "Enter a URL to analyze its security posture",
@@ -148,6 +149,28 @@ export const translations = {
     "grouped.date": "Date",
     "grouped.status": "Status",
 
+    // Enrichment
+    "enrichment.enrich": "Enrich",
+    "enrichment.reEnrich": "Re-enrich",
+    "enrichment.enriching": "Enriching...",
+    "enrichment.noKeys": "No API keys configured. Add VirusTotal or Shodan keys in Settings.",
+    "enrichment.virustotal": "VirusTotal",
+    "enrichment.shodan": "Shodan",
+    "enrichment.threatIntel": "Threat Intelligence",
+
+    // Settings
+    "settings.title": "Settings",
+    "settings.subtitle": "Configure API integrations and notification webhooks.",
+    "settings.apiKeys": "API Keys",
+    "settings.apiKeysDesc": "Add API keys to enable automatic enrichment after each scan.",
+    "settings.vtKey": "VirusTotal API Key",
+    "settings.shodanKey": "Shodan API Key",
+    "settings.save": "Save API Keys",
+    "settings.saved": "Saved!",
+    "settings.configured": "Configured",
+    "settings.notifications": "Notifications",
+    "settings.notificationsDesc": "Receive alerts when scans complete or critical findings are detected.",
+
     // Footer
     "footer.text": "TupiSec Scanner — Web Security Analysis Framework",
 
@@ -165,6 +188,7 @@ export const translations = {
     "nav.history": "Historial",
     "nav.batch": "Masivo",
     "nav.schedules": "Programados",
+    "nav.settings": "Ajustes",
 
     // Home
     "home.subtitle": "Ingresá una URL para analizar su seguridad",
@@ -305,6 +329,28 @@ export const translations = {
     "grouped.retest": "Re-escanear",
     "grouped.date": "Fecha",
     "grouped.status": "Estado",
+
+    // Enrichment
+    "enrichment.enrich": "Enriquecer",
+    "enrichment.reEnrich": "Re-enriquecer",
+    "enrichment.enriching": "Enriqueciendo...",
+    "enrichment.noKeys": "Sin claves API. Agrega VirusTotal o Shodan en Ajustes.",
+    "enrichment.virustotal": "VirusTotal",
+    "enrichment.shodan": "Shodan",
+    "enrichment.threatIntel": "Inteligencia de Amenazas",
+
+    // Settings
+    "settings.title": "Ajustes",
+    "settings.subtitle": "Configurá integraciones de API y webhooks de notificaciones.",
+    "settings.apiKeys": "Claves API",
+    "settings.apiKeysDesc": "Agrega claves API para habilitar el enriquecimiento automático.",
+    "settings.vtKey": "Clave API de VirusTotal",
+    "settings.shodanKey": "Clave API de Shodan",
+    "settings.save": "Guardar Claves API",
+    "settings.saved": "¡Guardado!",
+    "settings.configured": "Configurado",
+    "settings.notifications": "Notificaciones",
+    "settings.notificationsDesc": "Recibí alertas cuando los escaneos completen o se detecten hallazgos críticos.",
 
     // Footer
     "footer.text": "TupiSec Scanner — Framework de Análisis de Seguridad Web",

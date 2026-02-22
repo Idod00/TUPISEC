@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Shield, History, Home, Layers, Clock } from "lucide-react";
+import { Shield, History, Home, Layers, Clock, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/context";
 import type { TranslationKey } from "@/lib/i18n/translations";
@@ -12,6 +12,7 @@ const links: { href: string; key: TranslationKey; icon: React.ElementType }[] = 
   { href: "/history", key: "nav.history", icon: History },
   { href: "/batch", key: "nav.batch", icon: Layers },
   { href: "/schedules", key: "nav.schedules", icon: Clock },
+  { href: "/settings", key: "nav.settings", icon: Settings2 },
 ];
 
 export function NavBar() {

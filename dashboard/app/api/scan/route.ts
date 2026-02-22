@@ -5,6 +5,8 @@ import { runScan } from "@/lib/scanner";
 import { emitProgress } from "@/lib/scan-store";
 import { calculateScore } from "@/lib/scoring";
 import { captureScreenshot } from "@/lib/screenshot";
+import { dispatchNotifications } from "@/lib/notifications";
+import { enrichScan } from "@/lib/enrichment";
 
 export async function POST(request: Request) {
   try {
@@ -35,8 +37,10 @@ export async function POST(request: Request) {
         const score = calculateScore(report);
         completeScan(id, report, score);
         emitProgress(id, { phase: "done", step: 10, total: 10, message: "Complete" });
-        // Capture screenshot in background (fire and forget)
+        // Fire-and-forget background tasks
         captureScreenshot(url, id).catch(() => {});
+        dispatchNotifications(id, url, score, report).catch(() => {});
+        enrichScan(id).catch(() => {});
       },
       (error) => {
         console.error(`Scan ${id} failed:`, error);

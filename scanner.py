@@ -123,6 +123,8 @@ class TupiSecScanner:
         self.dns_records = []
         self.whois_info = {}
         self.cve_data = []
+        self.subdomains = []
+        self.open_redirect_results = []
         if cookies:
             for pair in cookies.split(";"):
                 pair = pair.strip()
@@ -683,6 +685,335 @@ class TupiSecScanner:
 
         self.log(f"  Found {len(self.cve_data)} high/critical CVEs", Fore.CYAN)
 
+    # ─── Module 11: Open Redirect Testing ─────────────────────────────
+    def scan_open_redirect(self):
+        self.log("\n[*] Testing for Open Redirects...", Fore.GREEN)
+        self.open_redirect_results = []
+        redirect_params = {"url", "redirect", "next", "return", "to", "dest",
+                           "destination", "location", "goto", "forward", "redir", "target"}
+        evil_url = "https://evil.tupisec-test.io"
+        tested = set()
+
+        all_urls = list(self.discovered_urls) + [self.target_url]
+        for page_url in all_urls:
+            parsed = urllib.parse.urlparse(page_url)
+            if not parsed.query:
+                continue
+            params = dict(urllib.parse.parse_qsl(parsed.query))
+            for param in list(params.keys()):
+                if param.lower() not in redirect_params:
+                    continue
+                key = (urllib.parse.urlunparse(parsed._replace(query="")), param)
+                if key in tested:
+                    continue
+                tested.add(key)
+                q = dict(params)
+                q[param] = evil_url
+                test_url = urllib.parse.urlunparse(
+                    parsed._replace(query=urllib.parse.urlencode(q))
+                )
+                try:
+                    resp = self.session.get(test_url, timeout=8, allow_redirects=False)
+                    location = resp.headers.get("Location", "")
+                    if location and "tupisec-test.io" in location:
+                        self.open_redirect_results.append({
+                            "url": page_url, "param": param, "redirect_to": location
+                        })
+                        self.add_finding(
+                            "HIGH", "Open Redirect",
+                            f"Open Redirect via parameter '{param}'",
+                            f"URL: {page_url}\nPayload: {param}={evil_url}\nRedirects to: {location}",
+                            "Validate redirect URLs against a whitelist. Never allow arbitrary external redirects."
+                        )
+                except Exception:
+                    pass
+
+        if not self.open_redirect_results:
+            self.log("  No open redirects detected.", Fore.CYAN)
+
+    # ─── Module 12: SSRF Testing ───────────────────────────────────────
+    def scan_ssrf(self):
+        self.log("\n[*] Testing for Server-Side Request Forgery (SSRF)...", Fore.GREEN)
+        ssrf_payloads = [
+            "http://127.0.0.1/",
+            "http://localhost/",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://[::1]/",
+        ]
+        ssrf_indicators = [
+            "ami-id", "instance-id", "local-ipv4", "iam/security-credentials",
+            "hostname", "instance-type", "meta-data",
+        ]
+
+        def check_ssrf_response(resp_text, payload, context):
+            for indicator in ssrf_indicators:
+                if indicator.lower() in resp_text.lower():
+                    self.add_finding(
+                        "CRITICAL", "SSRF",
+                        "Cloud Metadata Endpoint Accessible via SSRF",
+                        f"Context: {context}\nPayload: {payload}\nCloud metadata indicator: '{indicator}'",
+                        "Block outbound requests to internal/cloud metadata addresses. Use outbound allowlists."
+                    )
+                    return True
+            return False
+
+        # Test form fields
+        for form_data in self.discovered_forms:
+            action = form_data.get("action", "") or self.target_url
+            if not action.startswith("http"):
+                action = urllib.parse.urljoin(self.target_url, action)
+            method = form_data.get("method", "GET").upper()
+            fields = form_data.get("fields", {})
+            for field_name, field_info in fields.items():
+                if field_info.get("type") in ("hidden", "submit", "button", "image"):
+                    continue
+                for payload in ssrf_payloads:
+                    test_data = {fn: (payload if fn == field_name else fi.get("value", "test"))
+                                 for fn, fi in fields.items()}
+                    try:
+                        if method == "POST":
+                            resp = self.session.post(action, data=test_data, timeout=8, allow_redirects=True)
+                        else:
+                            resp = self.session.get(action, params=test_data, timeout=8, allow_redirects=True)
+                        if check_ssrf_response(resp.text, payload, f"Form field '{field_name}' at {action}"):
+                            break
+                    except Exception:
+                        pass
+
+        # Test URL parameters
+        for page_url in list(self.discovered_urls)[:15]:
+            parsed = urllib.parse.urlparse(page_url)
+            if not parsed.query:
+                continue
+            params = dict(urllib.parse.parse_qsl(parsed.query))
+            for param in list(params.keys()):
+                for payload in ssrf_payloads[:2]:
+                    q = dict(params)
+                    q[param] = payload
+                    test_url = urllib.parse.urlunparse(parsed._replace(query=urllib.parse.urlencode(q)))
+                    try:
+                        resp = self.session.get(test_url, timeout=8, allow_redirects=True)
+                        if check_ssrf_response(resp.text, payload, f"URL param '{param}' at {page_url}"):
+                            break
+                    except Exception:
+                        pass
+
+    # ─── Module 13: SSTI Testing ───────────────────────────────────────
+    def scan_ssti(self):
+        self.log("\n[*] Testing for Server-Side Template Injection (SSTI)...", Fore.GREEN)
+        payloads = [
+            ("{{7*7}}", "49"),
+            ("${7*7}", "49"),
+            ("#{7*7}", "49"),
+            ("<%= 7*7 %>", "49"),
+            ("*{7*7}", "49"),
+            ("{{7*'7'}}", "7777777"),
+        ]
+
+        def check_ssti(resp_text, payload, expected, context):
+            if expected in resp_text:
+                self.add_finding(
+                    "CRITICAL", "SSTI",
+                    f"Server-Side Template Injection — {context}",
+                    f"Payload: {payload}\nResult '{expected}' found in response. RCE may be possible.",
+                    "Never render user input through template engines. Use safe rendering or sandboxing."
+                )
+                return True
+            return False
+
+        # Test form fields
+        for form_data in self.discovered_forms:
+            action = form_data.get("action", "") or self.target_url
+            if not action.startswith("http"):
+                action = urllib.parse.urljoin(self.target_url, action)
+            method = form_data.get("method", "GET").upper()
+            fields = form_data.get("fields", {})
+            for field_name, field_info in fields.items():
+                if field_info.get("type") in ("hidden", "submit", "button", "image", "password"):
+                    continue
+                for payload, expected in payloads:
+                    test_data = {fn: (payload if fn == field_name else fi.get("value", "test"))
+                                 for fn, fi in fields.items()}
+                    try:
+                        if method == "POST":
+                            resp = self.session.post(action, data=test_data, timeout=TIMEOUT, allow_redirects=True)
+                        else:
+                            resp = self.session.get(action, params=test_data, timeout=TIMEOUT, allow_redirects=True)
+                        if check_ssti(resp.text, payload, expected, f"field '{field_name}' at {action}"):
+                            break
+                    except Exception:
+                        pass
+
+        # Test URL parameters
+        for page_url in list(self.discovered_urls)[:15]:
+            parsed = urllib.parse.urlparse(page_url)
+            if not parsed.query:
+                continue
+            params = dict(urllib.parse.parse_qsl(parsed.query))
+            for param in list(params.keys()):
+                for payload, expected in payloads:
+                    q = dict(params)
+                    q[param] = payload
+                    test_url = urllib.parse.urlunparse(parsed._replace(query=urllib.parse.urlencode(q)))
+                    try:
+                        resp = self.session.get(test_url, timeout=TIMEOUT, allow_redirects=True)
+                        if check_ssti(resp.text, payload, expected, f"param '{param}' at {page_url}"):
+                            break
+                    except Exception:
+                        pass
+
+    # ─── Module 14: Advanced CORS Testing ─────────────────────────────
+    def scan_cors_advanced(self):
+        self.log("\n[*] Advanced CORS testing...", Fore.GREEN)
+        evil_origin = "https://evil.tupisec-test.io"
+        urls_to_test = [self.target_url] + list(self.discovered_urls)[:5]
+
+        for test_url in urls_to_test:
+            try:
+                resp = self.session.get(
+                    test_url,
+                    timeout=TIMEOUT,
+                    headers={"Origin": evil_origin},
+                    allow_redirects=True,
+                )
+                acao = resp.headers.get("Access-Control-Allow-Origin", "")
+                acac = resp.headers.get("Access-Control-Allow-Credentials", "").lower().strip()
+
+                if acao == evil_origin and acac == "true":
+                    self.add_finding(
+                        "CRITICAL", "CORS Misconfiguration",
+                        "CORS: Arbitrary Origin Reflected with Credentials",
+                        f"URL: {test_url}\nAccess-Control-Allow-Origin: {acao}\n"
+                        f"Access-Control-Allow-Credentials: {acac}\n"
+                        "Attackers can make authenticated cross-origin requests.",
+                        "Validate Origin against a strict allowlist. Never combine reflected origins with credentials."
+                    )
+                    return  # One critical finding is enough
+                elif acao == evil_origin:
+                    self.add_finding(
+                        "HIGH", "CORS Misconfiguration",
+                        "CORS: Arbitrary Origin Reflected",
+                        f"URL: {test_url}\nAccess-Control-Allow-Origin: {acao}\n"
+                        "Server reflects any Origin header, enabling cross-origin data access.",
+                        "Validate Origin against a strict allowlist."
+                    )
+                elif acao.lower() == "null" and acac == "true":
+                    self.add_finding(
+                        "HIGH", "CORS Misconfiguration",
+                        "CORS: Null Origin Accepted with Credentials",
+                        f"URL: {test_url}\nAccess-Control-Allow-Origin: null\n"
+                        f"Access-Control-Allow-Credentials: {acac}\n"
+                        "Null origin can be sent from sandboxed iframes.",
+                        "Do not trust the null origin. Validate Origin strictly."
+                    )
+            except Exception:
+                pass
+
+    # ─── Module 15: Subdomain Enumeration ─────────────────────────────
+    def scan_subdomains(self):
+        self.log("\n[*] Enumerating subdomains...", Fore.GREEN)
+        self.subdomains = []
+
+        hostname = self.parsed.hostname or self.parsed.netloc
+        parts = hostname.split(".")
+        apex = ".".join(parts[-2:]) if len(parts) >= 2 else hostname
+
+        wordlist = [
+            "www", "api", "admin", "dev", "staging", "mail", "ftp", "app", "portal",
+            "vpn", "auth", "dashboard", "panel", "beta", "shop", "blog", "help",
+            "status", "cdn", "docs", "git", "jenkins", "jira", "smtp", "ns1", "ns2",
+            "db", "backup", "monitor", "metrics", "grafana", "kibana", "test", "qa",
+            "uat", "prod", "internal", "remote", "support", "demo", "login", "webmail",
+            "m", "mobile", "static", "assets", "img", "images", "media", "upload",
+            "files", "download", "secure", "dev2", "stage", "sandbox", "preview",
+            "api2", "v2", "legacy", "old", "new", "infra", "ops", "cloud",
+            "proxy", "lb", "waf", "gitlab", "wiki", "confluence", "vault",
+            "elastic", "logstash", "prom", "alerts", "logs", "search", "sso", "id",
+            "account", "accounts", "billing", "payment", "store", "forum",
+            "community", "partner", "careers",
+        ]
+
+        takeover_patterns = [
+            ("github.io", "there isn't a github pages site here"),
+            ("herokucdn.com", "no such app"),
+            ("heroku", "no such app"),
+            ("netlify.app", "not found"),
+            ("amazonaws.com", "nosuchbucket"),
+            ("vercel.app", "the deployment could not be found"),
+            ("surge.sh", "project not found"),
+            ("fastly.net", "fastly error: unknown domain"),
+        ]
+
+        try:
+            import dns.resolver
+        except ImportError:
+            self.log("  [!] dnspython not available, skipping subdomain enumeration", Fore.YELLOW)
+            return
+
+        self.log(f"  Testing {len(wordlist)} candidates for {apex}...", Fore.CYAN)
+
+        for sub in wordlist:
+            fqdn = f"{sub}.{apex}"
+            try:
+                answers = dns.resolver.resolve(fqdn, "A", lifetime=3)
+                ips = [r.to_text() for r in answers]
+                ip = ips[0] if ips else ""
+
+                status_code = 0
+                takeover_risk = False
+                resp_body = ""
+
+                for scheme in ("https", "http"):
+                    try:
+                        resp = self.session.get(f"{scheme}://{fqdn}", timeout=5, allow_redirects=True)
+                        status_code = resp.status_code
+                        resp_body = resp.text.lower()
+                        break
+                    except Exception:
+                        pass
+
+                # Check for takeover via CNAME
+                try:
+                    cname_answers = dns.resolver.resolve(fqdn, "CNAME", lifetime=3)
+                    cname_target = str(cname_answers[0].target).lower()
+                    for svc_domain, svc_pattern in takeover_patterns:
+                        if svc_domain in cname_target and svc_pattern in resp_body:
+                            takeover_risk = True
+                            self.add_finding(
+                                "CRITICAL", "Subdomain Takeover",
+                                f"Subdomain takeover risk: {fqdn}",
+                                f"CNAME → {cname_target}\nUnclaimed service pattern: '{svc_pattern}'",
+                                f"Claim the {svc_domain} resource or remove the CNAME record."
+                            )
+                            break
+                except Exception:
+                    # No CNAME — check body directly
+                    for svc_domain, svc_pattern in takeover_patterns:
+                        if svc_pattern in resp_body:
+                            takeover_risk = True
+                            self.add_finding(
+                                "CRITICAL", "Subdomain Takeover",
+                                f"Subdomain takeover risk: {fqdn}",
+                                f"Pattern '{svc_pattern}' found in HTTP response.",
+                                "Remove the DNS record or claim the service resource."
+                            )
+                            break
+
+                entry = {"subdomain": fqdn, "ip": ip, "status": status_code, "takeover_risk": takeover_risk}
+                self.subdomains.append(entry)
+                self.add_finding(
+                    "INFO", "Subdomain Discovery",
+                    f"Subdomain found: {fqdn}",
+                    f"IP: {ip}, HTTP Status: {status_code}",
+                    "Review all discovered subdomains for unnecessary exposure."
+                )
+                self.log(f"  [+] {fqdn} → {ip} (HTTP {status_code})", Fore.CYAN)
+
+            except Exception:
+                pass
+
+        self.log(f"  Discovered {len(self.subdomains)} subdomains", Fore.CYAN)
+
     # ─── Module 8: Port Scanning (via nmap) ───────────────────────────
     def scan_ports(self):
         self.log("\n[*] Scanning common ports...", Fore.GREEN)
@@ -898,6 +1229,11 @@ class TupiSecScanner:
             ("xss", "Testing XSS", lambda: self.scan_xss()),
             ("directories", "Enumerating directories", lambda: self.scan_directories()),
             ("ports", "Scanning ports", lambda: self.scan_ports()),
+            ("open_redirect", "Testing for open redirects", lambda: self.scan_open_redirect()),
+            ("ssrf", "Testing for SSRF", lambda: self.scan_ssrf()),
+            ("ssti", "Testing for template injection", lambda: self.scan_ssti()),
+            ("cors", "Advanced CORS testing", lambda: self.scan_cors_advanced()),
+            ("subdomains", "Enumerating subdomains", lambda: self.scan_subdomains()),
         ]
 
         total = len(phases)
@@ -954,6 +1290,7 @@ def main():
             "dns_records": scanner.dns_records,
             "whois_info": scanner.whois_info,
             "cve_data": scanner.cve_data,
+            "subdomains": getattr(scanner, "subdomains", []),
         }
         print(json.dumps(report_data))
     else:

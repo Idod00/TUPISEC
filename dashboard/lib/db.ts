@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import path from "path";
-import type { ScanRecord, ScanReport, BatchRecord, FindingStatusRecord, FindingStatusValue, ScheduleRecord } from "./types";
+import type { ScanRecord, ScanReport, BatchRecord, FindingStatusRecord, FindingStatusValue, ScheduleRecord, NotificationConfig, EnrichmentData } from "./types";
 
 const DB_PATH = path.join(process.cwd(), "data", "tupisec.db");
 
@@ -81,6 +81,36 @@ function getDb(): Database.Database {
         next_run TEXT
       );
     `);
+
+    // Notification configs table
+    _db.exec(`
+      CREATE TABLE IF NOT EXISTS notification_configs (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        url TEXT NOT NULL,
+        enabled INTEGER DEFAULT 1,
+        notify_on_complete INTEGER DEFAULT 1,
+        notify_on_critical INTEGER DEFAULT 1,
+        min_risk_score INTEGER DEFAULT 100,
+        created_at TEXT NOT NULL
+      );
+    `);
+
+    // Settings table (key-value store)
+    _db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
+    // Migration: add enrichment_json column to scans
+    const scanCols = _db.prepare("PRAGMA table_info(scans)").all() as { name: string }[];
+    if (!scanCols.some((c) => c.name === "enrichment_json")) {
+      _db.exec("ALTER TABLE scans ADD COLUMN enrichment_json TEXT");
+    }
   }
   return _db;
 }
@@ -285,4 +315,74 @@ export function deleteSchedule(id: string): boolean {
 export function updateScheduleRun(id: string, lastRun: string, nextRun: string): void {
   const db = getDb();
   db.prepare(`UPDATE schedules SET last_run = ?, next_run = ? WHERE id = ?`).run(lastRun, nextRun, id);
+}
+
+// ─── Notification Configs ───────────────────────────────────────────
+
+export function listNotificationConfigs(): NotificationConfig[] {
+  const db = getDb();
+  return db.prepare(`SELECT * FROM notification_configs ORDER BY created_at DESC`).all() as NotificationConfig[];
+}
+
+export function getNotificationConfig(id: string): NotificationConfig | undefined {
+  const db = getDb();
+  return db.prepare(`SELECT * FROM notification_configs WHERE id = ?`).get(id) as NotificationConfig | undefined;
+}
+
+export function createNotificationConfig(config: Omit<NotificationConfig, "created_at">): NotificationConfig {
+  const db = getDb();
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO notification_configs (id, name, type, url, enabled, notify_on_complete, notify_on_critical, min_risk_score, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(config.id, config.name, config.type, config.url, config.enabled ? 1 : 0,
+        config.notify_on_complete ? 1 : 0, config.notify_on_critical ? 1 : 0,
+        config.min_risk_score, now);
+  return db.prepare(`SELECT * FROM notification_configs WHERE id = ?`).get(config.id) as NotificationConfig;
+}
+
+export function deleteNotificationConfig(id: string): boolean {
+  const db = getDb();
+  const result = db.prepare(`DELETE FROM notification_configs WHERE id = ?`).run(id);
+  return result.changes > 0;
+}
+
+// ─── Settings ──────────────────────────────────────────────────────
+
+export function getSetting(key: string): string | null {
+  const db = getDb();
+  const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as { value: string } | undefined;
+  return row ? row.value : null;
+}
+
+export function setSetting(key: string, value: string): void {
+  const db = getDb();
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+  ).run(key, value, now);
+}
+
+export function listSettings(): { key: string; value: string; updated_at: string }[] {
+  const db = getDb();
+  return db.prepare(`SELECT * FROM settings`).all() as { key: string; value: string; updated_at: string }[];
+}
+
+// ─── Enrichment ────────────────────────────────────────────────────
+
+export function updateScanEnrichment(id: string, enrichment: EnrichmentData): void {
+  const db = getDb();
+  db.prepare(`UPDATE scans SET enrichment_json = ? WHERE id = ?`).run(JSON.stringify(enrichment), id);
+}
+
+export function getScanEnrichment(id: string): EnrichmentData | null {
+  const db = getDb();
+  const row = db.prepare(`SELECT enrichment_json FROM scans WHERE id = ?`).get(id) as { enrichment_json: string | null } | undefined;
+  if (!row || !row.enrichment_json) return null;
+  try {
+    return JSON.parse(row.enrichment_json) as EnrichmentData;
+  } catch {
+    return null;
+  }
 }

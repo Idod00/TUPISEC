@@ -19,8 +19,10 @@ import { RiskGauge } from "@/components/risk-gauge";
 import { RemediationProgress } from "@/components/remediation-progress";
 import { DnsWhoisCard } from "@/components/dns-whois-card";
 import { ScreenshotCard } from "@/components/screenshot-card";
+import { VirusTotalCard } from "@/components/virustotal-card";
+import { ShodanCard } from "@/components/shodan-card";
 import { calculateScore } from "@/lib/scoring";
-import type { ScanReport, ScanRecord, FindingStatusRecord } from "@/lib/types";
+import type { ScanReport, ScanRecord, FindingStatusRecord, EnrichmentData } from "@/lib/types";
 
 export default function ScanReportPage() {
   const { id } = useParams<{ id: string }>();
@@ -33,6 +35,8 @@ export default function ScanReportPage() {
   const [statuses, setStatuses] = useState<FindingStatusRecord[]>([]);
   const [previousScans, setPreviousScans] = useState<{ id: string; created_at: string }[]>([]);
   const [retesting, setRetesting] = useState(false);
+  const [enrichment, setEnrichment] = useState<EnrichmentData | null>(null);
+  const [enriching, setEnriching] = useState(false);
 
   const handleRetest = async () => {
     if (!report) return;
@@ -49,6 +53,19 @@ export default function ScanReportPage() {
       setRetesting(false);
     }
   };
+
+  const handleEnrich = useCallback(async () => {
+    setEnriching(true);
+    try {
+      const res = await fetch(`/api/scan/${id}/enrich`, { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        setEnrichment(data);
+      }
+    } finally {
+      setEnriching(false);
+    }
+  }, [id]);
 
   const fetchReport = useCallback(() => {
     fetch(`/api/scan/${id}`)
@@ -84,6 +101,12 @@ export default function ScanReportPage() {
     fetch(`/api/scan/${id}/findings-statuses`)
       .then((r) => { if (r.ok) return r.json(); return []; })
       .then((data) => { if (Array.isArray(data)) setStatuses(data); })
+      .catch(() => {});
+
+    // Fetch enrichment
+    fetch(`/api/scan/${id}/enrich`)
+      .then((r) => { if (r.ok) return r.json(); return null; })
+      .then((data) => { if (data) setEnrichment(data); })
       .catch(() => {});
   }, [id]);
 
@@ -237,6 +260,36 @@ export default function ScanReportPage() {
       {/* DNS/WHOIS */}
       <div className="mb-6">
         <DnsWhoisCard dnsRecords={report.dns_records} whoisInfo={report.whois_info} />
+      </div>
+
+      {/* Threat Intelligence (VirusTotal + Shodan) */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold">{t("enrichment.threatIntel")}</h2>
+          <Button variant="outline" size="sm" onClick={handleEnrich} disabled={enriching}>
+            {enriching ? (
+              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-1.5" />
+            )}
+            {enrichment ? t("enrichment.reEnrich") : t("enrichment.enrich")}
+          </Button>
+        </div>
+        {enrichment ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {enrichment.virustotal && <VirusTotalCard data={enrichment.virustotal} />}
+            {enrichment.shodan && <ShodanCard data={enrichment.shodan} />}
+            {!enrichment.virustotal && !enrichment.shodan && (
+              <p className="text-sm text-muted-foreground col-span-2">
+                {t("enrichment.noKeys")}
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {t("enrichment.noKeys")}
+          </p>
+        )}
       </div>
 
       {/* Findings */}
