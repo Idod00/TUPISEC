@@ -25,34 +25,36 @@ export function FindingCard({ finding, index, statusRecord, onStatusChange }: Fi
   return (
     <Card className="border-border/50 transition-colors hover:border-border">
       <CardContent className="p-0">
-        <button
-          onClick={() => setOpen(!open)}
-          className="flex w-full items-start gap-3 p-4 text-left"
-        >
-          <span className="mt-0.5 text-muted-foreground">
-            {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          </span>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <SeverityBadge severity={finding.severity} />
-              <span className="text-xs text-muted-foreground font-mono">#{index}</span>
-              <span className="text-xs text-muted-foreground">{finding.category}</span>
-              {onStatusChange && (
-                <FindingStatusBadge
-                  status={currentStatus as FindingStatusValue}
-                  onChange={(s) => onStatusChange(s, currentNote)}
-                />
-              )}
-              {onStatusChange && (
-                <FindingNoteDialog
-                  note={currentNote}
-                  onSave={(note) => onStatusChange(currentStatus, note)}
-                />
-              )}
+        <div className="flex w-full items-start">
+          <button
+            onClick={() => setOpen(!open)}
+            className="flex flex-1 items-start gap-3 p-4 text-left min-w-0"
+          >
+            <span className="mt-0.5 text-muted-foreground shrink-0">
+              {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <SeverityBadge severity={finding.severity} />
+                <span className="text-xs text-muted-foreground font-mono">#{index}</span>
+                <span className="text-xs text-muted-foreground">{finding.category}</span>
+              </div>
+              <p className="mt-1 text-sm font-medium">{finding.title}</p>
             </div>
-            <p className="mt-1 text-sm font-medium">{finding.title}</p>
-          </div>
-        </button>
+          </button>
+          {onStatusChange && (
+            <div className="flex items-center gap-1 p-2 pt-3 shrink-0">
+              <FindingStatusBadge
+                status={currentStatus as FindingStatusValue}
+                onChange={(s) => onStatusChange(s, currentNote)}
+              />
+              <FindingNoteDialog
+                note={currentNote}
+                onSave={(note) => onStatusChange(currentStatus, note)}
+              />
+            </div>
+          )}
+        </div>
 
         {open && (
           <div className="border-t border-border/50 px-4 pb-4 pt-3 ml-7">
