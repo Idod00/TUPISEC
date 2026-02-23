@@ -108,7 +108,7 @@ export interface FindingStatusRecord {
 export interface NotificationConfig {
   id: string;
   name: string;
-  type: "slack" | "webhook";
+  type: "slack" | "webhook" | "discord" | "telegram";
   url: string;
   enabled: number;
   notify_on_complete: number;

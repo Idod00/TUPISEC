@@ -11,6 +11,7 @@ import re
 import json
 import ssl
 import socket
+import time
 import urllib.parse
 from datetime import datetime
 from collections import defaultdict
@@ -1679,6 +1680,277 @@ class TupiSecScanner:
         except Exception as e:
             self.log(f"  [!] Methods scan error: {e}", Fore.RED)
 
+    # ─── Module 24: NoSQL Injection ───────────────────────────────────
+    def scan_nosql_injection(self):
+        self.log("\n[*] Testing for NoSQL Injection...", Fore.GREEN)
+
+        NOSQL_ERRORS = ["mongodb", "mongoose", "bson", "objectid", "castError",
+                        "cannot convert", "$where", "json parse error"]
+
+        # JSON operator payloads for login forms
+        json_payloads = [
+            {"$gt": ""},
+            {"$ne": "invalid_xyz"},
+            {"$regex": ".*"},
+        ]
+
+        # Query-string bracket notation payloads
+        qs_suffixes = [("[$ne]", "1"), ("[$gt]", "0"), ("[$regex]", ".*")]
+
+        found = False
+
+        # Test login forms
+        for form_data in self.discovered_forms:
+            action = form_data.get("action") or self.target_url
+            if not action.startswith("http"):
+                action = urllib.parse.urljoin(self.target_url, action)
+            fields = form_data["fields"]
+            has_password = any("pass" in k.lower() or "pwd" in k.lower() for k in fields)
+            if not has_password:
+                continue
+
+            try:
+                baseline = self.session.post(action, json={"username": "x", "password": "x"},
+                                             timeout=TIMEOUT, allow_redirects=False)
+            except:
+                baseline = None
+
+            for field_name in list(fields.keys())[:3]:
+                for payload in json_payloads:
+                    test_body = {k: (payload if k == field_name else "test") for k in fields}
+                    try:
+                        resp = self.session.post(action, json=test_body, timeout=TIMEOUT,
+                                                 allow_redirects=False)
+                        resp_lower = resp.text.lower()
+                        redirect_bypass = (resp.status_code in (302, 303)
+                                           and (baseline is None or baseline.status_code not in (302, 303)))
+                        if redirect_bypass:
+                            self.add_finding("CRITICAL", "NoSQL Injection",
+                                f"NoSQL authentication bypass via field '{field_name}'",
+                                f"POST {action} with operator payload returned redirect — possible login bypass.",
+                                "Validate and sanitize all inputs; use typed schemas to reject operator injection.")
+                            found = True
+                            break
+                        for err in NOSQL_ERRORS:
+                            if err in resp_lower:
+                                self.add_finding("HIGH", "NoSQL Injection",
+                                    "NoSQL error disclosure",
+                                    f"MongoDB/Mongoose error in response to POST {action}.",
+                                    "Disable detailed error messages and validate input types.")
+                                found = True
+                                break
+                    except:
+                        pass
+                if found:
+                    break
+
+        # Test URL params with bracket notation
+        for url in list(self.discovered_urls)[:15]:
+            parsed = urllib.parse.urlparse(url)
+            params = urllib.parse.parse_qs(parsed.query)
+            if not params:
+                continue
+            try:
+                baseline = self.session.get(url, timeout=TIMEOUT)
+            except:
+                continue
+            for param in list(params.keys())[:3]:
+                for suffix, value in qs_suffixes:
+                    flat = {k: v[0] for k, v in params.items()}
+                    flat[f"{param}{suffix}"] = value
+                    try:
+                        resp = self.session.get(parsed._replace(query="").geturl(),
+                                                params=flat, timeout=TIMEOUT)
+                        if resp.status_code == 200 and baseline.status_code != 200:
+                            self.add_finding("HIGH", "NoSQL Injection",
+                                f"Possible NoSQL bypass via parameter '{param}'",
+                                f"URL: {url} — status changed {baseline.status_code}→200 with operator payload.",
+                                "Reject bracket notation in URL params; validate input types server-side.")
+                            found = True
+                        for err in NOSQL_ERRORS:
+                            if err in resp.text.lower():
+                                self.add_finding("HIGH", "NoSQL Injection",
+                                    f"NoSQL error disclosure in parameter '{param}'",
+                                    f"MongoDB/Mongoose error for param '{param}' at {url}.",
+                                    "Disable detailed error messages and validate input types.")
+                                found = True
+                    except:
+                        pass
+
+        if not found:
+            self.log("  No NoSQL injection found.", Fore.YELLOW)
+
+    # ─── Module 25: OS Command Injection ──────────────────────────────
+    def scan_cmd_injection(self):
+        self.log("\n[*] Testing for OS Command Injection...", Fore.GREEN)
+
+        OUTPUT_PAYLOADS = [
+            ("; id",   ["uid=", "root:", "daemon:"]),
+            ("| id",   ["uid=", "root:", "daemon:"]),
+            ("&& id",  ["uid=", "root:", "daemon:"]),
+            ("$(id)",  ["uid=", "root:", "daemon:"]),
+            ("`id`",   ["uid=", "root:", "daemon:"]),
+        ]
+        TIME_PAYLOADS = ["; sleep 5", "| sleep 5", "&& sleep 5", "$(sleep 5)"]
+
+        found = False
+
+        for form_data in self.discovered_forms:
+            action = form_data.get("action") or self.target_url
+            if not action.startswith("http"):
+                action = urllib.parse.urljoin(self.target_url, action)
+            method = form_data["method"]
+            fields = form_data["fields"]
+
+            for field_name, field_info in fields.items():
+                if field_info.get("type") in ("hidden", "submit", "button", "image", "checkbox", "radio"):
+                    continue
+
+                # Output-based detection
+                for payload, indicators in OUTPUT_PAYLOADS:
+                    test_data = {fn: (payload if fn == field_name else fi.get("value", "test"))
+                                 for fn, fi in fields.items()}
+                    try:
+                        if method == "POST":
+                            resp = self.session.post(action, data=test_data, timeout=TIMEOUT)
+                        else:
+                            resp = self.session.get(action, params=test_data, timeout=TIMEOUT)
+                        for indicator in indicators:
+                            if indicator in resp.text:
+                                self.add_finding("CRITICAL", "OS Command Injection",
+                                    f"Command injection in field '{field_name}'",
+                                    f"Indicator '{indicator}' found in response with payload: {payload}",
+                                    "Never pass user input to shell commands; use subprocess with argument lists.")
+                                found = True
+                                break
+                    except:
+                        pass
+                    if found:
+                        break
+
+                # Time-based detection (only if output-based didn't fire)
+                if not found:
+                    for payload in TIME_PAYLOADS:
+                        test_data = {fn: (payload if fn == field_name else fi.get("value", "test"))
+                                     for fn, fi in fields.items()}
+                        try:
+                            start = time.time()
+                            if method == "POST":
+                                self.session.post(action, data=test_data, timeout=12)
+                            else:
+                                self.session.get(action, params=test_data, timeout=12)
+                            elapsed = time.time() - start
+                            if elapsed >= 4.5:
+                                self.add_finding("CRITICAL", "OS Command Injection",
+                                    f"Blind command injection (time-based) in field '{field_name}'",
+                                    f"Response delayed ~{elapsed:.1f}s with payload: {payload}",
+                                    "Never pass user input to shell commands; use subprocess with argument lists.")
+                                found = True
+                                break
+                        except:
+                            pass
+
+                if found:
+                    break
+
+        if not found:
+            self.log("  No command injection found.", Fore.YELLOW)
+
+    # ─── Module 26: Default Credentials ───────────────────────────────
+    def scan_default_creds(self):
+        self.log("\n[*] Testing for default credentials...", Fore.GREEN)
+
+        ADMIN_PATHS = [
+            "wp-admin", "admin", "administrator", "phpmyadmin", "login",
+            "panel", "cp", "controlpanel", "manage", "manager", "console",
+            "backend", "adminer", "webadmin", "siteadmin", "admin/login",
+        ]
+        DEFAULT_CREDS = [
+            ("admin", "admin"), ("admin", "password"), ("admin", "123456"),
+            ("admin", "admin123"), ("admin", "1234"), ("admin", ""),
+            ("root", "root"), ("root", "toor"), ("administrator", "administrator"),
+            ("user", "user"), ("test", "test"),
+        ]
+
+        found_panels = []
+
+        for path in ADMIN_PATHS:
+            url = f"{self.base_url}/{path}"
+            try:
+                resp = self.session.get(url, timeout=TIMEOUT, allow_redirects=True)
+                if resp.status_code == 200:
+                    html_lower = resp.text.lower()
+                    if "<form" in html_lower and ('type="password"' in html_lower or "type='password'" in html_lower):
+                        found_panels.append((url, resp))
+                        self.log(f"  Found admin panel: {url}", Fore.CYAN)
+            except:
+                pass
+
+        if not found_panels:
+            self.log("  No admin panels found.", Fore.YELLOW)
+            return
+
+        for panel_url, panel_resp in found_panels:
+            soup = BeautifulSoup(panel_resp.text, "html.parser")
+            form = soup.find("form")
+            if not form:
+                continue
+
+            action = form.get("action", "") or panel_url
+            if not action.startswith("http"):
+                action = urllib.parse.urljoin(panel_url, action)
+            method = (form.get("method") or "post").lower()
+
+            inputs = form.find_all("input")
+            user_field = None
+            pass_field = None
+            hidden_fields = {}
+            for inp in inputs:
+                itype = (inp.get("type") or "text").lower()
+                iname = inp.get("name", "")
+                if not iname:
+                    continue
+                if itype == "hidden":
+                    hidden_fields[iname] = inp.get("value", "")
+                elif itype == "password":
+                    pass_field = iname
+                elif itype in ("text", "email") and not user_field:
+                    user_field = iname
+
+            if not user_field or not pass_field:
+                continue
+
+            # Baseline with invalid creds
+            try:
+                baseline = self.session.post(action, data={
+                    **hidden_fields, user_field: "invalid_user_xyz", pass_field: "invalid_pass_xyz",
+                }, timeout=TIMEOUT, allow_redirects=False)
+            except:
+                continue
+
+            for username, password in DEFAULT_CREDS:
+                try:
+                    resp = self.session.post(action, data={
+                        **hidden_fields, user_field: username, pass_field: password,
+                    }, timeout=TIMEOUT, allow_redirects=False)
+
+                    redirect_bypass = (resp.status_code in (301, 302, 303)
+                                       and baseline.status_code not in (301, 302, 303))
+                    content_change = (abs(len(resp.text) - len(baseline.text)) > 500
+                                      and resp.status_code == 200)
+
+                    if redirect_bypass or content_change:
+                        self.add_finding("CRITICAL", "Default Credentials",
+                            f"Default credentials accepted: {username}/{password or '(empty)'}",
+                            f"Login panel at {panel_url} accepted '{username}'/'{password or '(empty)'}'.",
+                            "Change all default passwords immediately and enforce strong password policies.")
+                        break
+                except:
+                    pass
+
+        if not any(f.category == "Default Credentials" for f in self.findings):
+            self.log("  No default credentials accepted.", Fore.YELLOW)
+
     # ─── Module 10: Crawl & Discover ──────────────────────────────────
     def crawl(self, depth=2):
         self.log("\n[*] Crawling for additional pages...", Fore.GREEN)
@@ -1826,6 +2098,9 @@ class TupiSecScanner:
             ("graphql",          "Testing GraphQL endpoints",       lambda: self.scan_graphql()),
             ("xxe",              "Testing for XXE",                 lambda: self.scan_xxe()),
             ("broken_links",     "Checking broken external links",  lambda: self.scan_broken_links()),
+            ("nosql",            "Testing for NoSQL injection",     lambda: self.scan_nosql_injection()),
+            ("cmd_injection",    "Testing for command injection",   lambda: self.scan_cmd_injection()),
+            ("default_creds",    "Testing for default credentials", lambda: self.scan_default_creds()),
         ]
 
         total = len(phases)

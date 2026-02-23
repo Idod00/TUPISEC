@@ -69,6 +69,53 @@ function buildWebhookPayload(scanId: string, targetUrl: string, riskScore: numbe
   };
 }
 
+function buildDiscordPayload(scanId: string, targetUrl: string, riskScore: number, report: ScanReport) {
+  const summary = report.summary || {};
+  const critical = summary.CRITICAL || 0;
+  const high = summary.HIGH || 0;
+  const medium = summary.MEDIUM || 0;
+  const grade = getRiskGrade(riskScore);
+  const domain = new URL(targetUrl).hostname;
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+  const color = critical > 0 ? 0xef4444 : high > 0 ? 0xf97316 : 0x22c55e;
+
+  return {
+    embeds: [{
+      title: "TupiSec Scan Complete",
+      color,
+      fields: [
+        { name: "Target", value: domain, inline: true },
+        { name: "Grade", value: `${grade} (${riskScore})`, inline: true },
+        { name: "Critical", value: String(critical), inline: true },
+        { name: "High", value: String(high), inline: true },
+        { name: "Medium", value: String(medium), inline: true },
+        { name: "Total", value: String(report.findings.length), inline: true },
+      ],
+      url: `${baseUrl}/scan/${scanId}`,
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
+
+function buildTelegramPayload(scanId: string, targetUrl: string, riskScore: number, report: ScanReport) {
+  const summary = report.summary || {};
+  const grade = getRiskGrade(riskScore);
+  const domain = new URL(targetUrl).hostname;
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+  const text = [
+    `🛡️ *TupiSec Scan Complete*`,
+    ``,
+    `*Target:* ${domain}`,
+    `*Grade:* ${grade} (${riskScore})`,
+    `🔴 Critical: ${summary.CRITICAL || 0}   🟠 High: ${summary.HIGH || 0}   🟡 Medium: ${summary.MEDIUM || 0}`,
+    `*Total findings:* ${report.findings.length}`,
+    ``,
+    `[View Report](${baseUrl}/scan/${scanId})`,
+  ].join("\n");
+
+  return { text, parse_mode: "Markdown" };
+}
+
 async function dispatchToConfig(
   config: NotificationConfig,
   scanId: string,
@@ -76,12 +123,21 @@ async function dispatchToConfig(
   riskScore: number,
   report: ScanReport
 ): Promise<void> {
-  const payload =
-    config.type === "slack"
-      ? buildSlackPayload(scanId, targetUrl, riskScore, report)
-      : buildWebhookPayload(scanId, targetUrl, riskScore, report);
+  let payload: object;
+  let url = config.url;
 
-  await fetch(config.url, {
+  if (config.type === "slack") {
+    payload = buildSlackPayload(scanId, targetUrl, riskScore, report);
+  } else if (config.type === "discord") {
+    payload = buildDiscordPayload(scanId, targetUrl, riskScore, report);
+  } else if (config.type === "telegram") {
+    // url format: "https://api.telegram.org/bot{token}/sendMessage?chat_id={chat_id}"
+    payload = buildTelegramPayload(scanId, targetUrl, riskScore, report);
+  } else {
+    payload = buildWebhookPayload(scanId, targetUrl, riskScore, report);
+  }
+
+  await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

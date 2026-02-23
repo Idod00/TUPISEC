@@ -20,7 +20,7 @@ export function NotificationsManager() {
 
   const [form, setForm] = useState({
     name: "",
-    type: "webhook" as "slack" | "webhook",
+    type: "webhook" as "slack" | "webhook" | "discord" | "telegram",
     url: "",
     notify_on_complete: true,
     notify_on_critical: true,
@@ -55,6 +55,7 @@ export function NotificationsManager() {
     } finally {
       setSaving(false);
     }
+
   };
 
   const handleDelete = async (id: string) => {
@@ -113,18 +114,32 @@ export function NotificationsManager() {
               <select
                 className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                 value={form.type}
-                onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as "slack" | "webhook" }))}
+                onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as "slack" | "webhook" | "discord" | "telegram" }))}
               >
-                <option value="slack">Slack (Incoming Webhook)</option>
                 <option value="webhook">Generic Webhook</option>
+                <option value="slack">Slack (Incoming Webhook)</option>
+                <option value="discord">Discord (Webhook)</option>
+                <option value="telegram">Telegram Bot</option>
               </select>
             </div>
           </div>
           <div className="mb-4">
-            <label className="block text-xs text-muted-foreground mb-1">Webhook URL</label>
+            <label className="block text-xs text-muted-foreground mb-1">
+              {form.type === "telegram"
+                ? "Telegram URL (https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID})"
+                : "Webhook URL"}
+            </label>
             <input
               className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"
-              placeholder="https://hooks.slack.com/services/..."
+              placeholder={
+                form.type === "slack"
+                  ? "https://hooks.slack.com/services/..."
+                  : form.type === "discord"
+                  ? "https://discord.com/api/webhooks/..."
+                  : form.type === "telegram"
+                  ? "https://api.telegram.org/bot123456:ABC-DEF/sendMessage?chat_id=-100..."
+                  : "https://your-server.com/webhook"
+              }
               value={form.url}
               onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
               required
@@ -196,7 +211,10 @@ export function NotificationsManager() {
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm">{config.name}</span>
                     <span className={`rounded-full px-2 py-0.5 text-xs ${
-                      config.type === "slack" ? "bg-yellow-500/10 text-yellow-400" : "bg-blue-500/10 text-blue-400"
+                      config.type === "slack"     ? "bg-yellow-500/10 text-yellow-400" :
+                      config.type === "discord"   ? "bg-indigo-500/10 text-indigo-400" :
+                      config.type === "telegram"  ? "bg-sky-500/10 text-sky-400" :
+                                                    "bg-blue-500/10 text-blue-400"
                     }`}>
                       {config.type}
                     </span>
