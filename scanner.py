@@ -136,6 +136,19 @@ class TupiSecScanner:
                     name, _, value = pair.partition("=")
                     self.session.cookies.set(name.strip(), value.strip())
 
+    def _get_apex_domain(self, hostname: str) -> str:
+        """Return the registrable apex domain, handling ccSLDs like .com.py, .co.uk, .com.ar."""
+        CCSLD_LABELS = {"com", "org", "net", "edu", "gov", "co", "ac", "gob", "mil", "or", "ne"}
+        parts = hostname.lower().split(".")
+        if len(parts) < 2:
+            return hostname
+        tld = parts[-1]
+        sld = parts[-2]
+        # ccSLD: 2-char country TLD + known second-level label → apex needs 3 parts
+        if len(tld) == 2 and sld in CCSLD_LABELS and len(parts) >= 3:
+            return ".".join(parts[-3:])
+        return ".".join(parts[-2:])
+
     def log(self, msg, color=Fore.WHITE):
         if self.verbose:
             print(f"{color}{msg}{Style.RESET_ALL}")
@@ -919,8 +932,7 @@ class TupiSecScanner:
         self.subdomains = []
 
         hostname = self.parsed.hostname or self.parsed.netloc
-        parts = hostname.split(".")
-        apex = ".".join(parts[-2:]) if len(parts) >= 2 else hostname
+        apex = self._get_apex_domain(hostname)
 
         wordlist = [
             "www", "api", "admin", "dev", "staging", "mail", "ftp", "app", "portal",
@@ -1784,9 +1796,9 @@ class TupiSecScanner:
     def scan_s3_buckets(self):
         self.log("\n[*] Testing for S3 bucket misconfiguration...", Fore.GREEN)
 
-        domain_parts = self.parsed.netloc.replace("www.", "").split(".")
-        base_name = domain_parts[0]
-        apex = ".".join(domain_parts[-2:]) if len(domain_parts) >= 2 else domain_parts[0]
+        hostname = self.parsed.hostname or self.parsed.netloc
+        apex = self._get_apex_domain(hostname)
+        base_name = apex.split(".")[0]
 
         candidates = {
             base_name,
