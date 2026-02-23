@@ -1,5 +1,6 @@
 # ── Stage 1: Build Next.js ─────────────────────────────────────────────
-FROM node:22-alpine AS builder
+# Run the build on the native build platform for speed (cross-compile aware)
+FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
 
 WORKDIR /app/dashboard
 
