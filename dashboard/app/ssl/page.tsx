@@ -175,7 +175,7 @@ export default function SSLPage() {
       {/* Monitor list */}
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground py-8">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading monitors...
+          <Loader2 className="h-4 w-4 animate-spin" /> {t("ssl.loading")}
         </div>
       ) : monitors.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">

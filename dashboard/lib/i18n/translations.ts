@@ -176,6 +176,7 @@ export const translations = {
     "ssl.disabled": "Disabled",
     "ssl.alertsLabel": "Alerts: {n}d",
     "ssl.edit.enabled": "Monitor enabled",
+    "ssl.loading": "Loading monitors...",
     "ssl.none": "No SSL monitors configured yet.",
 
     // SMTP Settings
@@ -400,6 +401,7 @@ export const translations = {
     "ssl.disabled": "Deshabilitado",
     "ssl.alertsLabel": "Alertas: {n}d",
     "ssl.edit.enabled": "Monitor habilitado",
+    "ssl.loading": "Cargando monitores...",
     "ssl.none": "Sin monitores SSL configurados aún.",
 
     // SMTP Settings
