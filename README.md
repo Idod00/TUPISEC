@@ -426,7 +426,7 @@ python3 scanner.py https://ejemplo.com --full --output reporte.txt
 
 - **Nuevo scan** — lanza el scanner desde el browser con progreso en tiempo real
 - **Historial** — todos los scans agrupados por dominio con sparkline de tendencia de score
-- **Reporte de seguridad** — findings organizados por severidad, score, graficos
+- **Reporte de seguridad** — findings organizados por severidad, score, graficos coloreados por severidad
 - **OWASP Top 10** — cobertura mapeada a las 10 categorias OWASP 2021 en cada reporte
 - **Comparacion** — compara dos scans del mismo objetivo para ver progreso
 - **Batch scan** — escanea multiples URLs en paralelo
@@ -439,6 +439,7 @@ python3 scanner.py https://ejemplo.com --full --output reporte.txt
 - **SSL Monitor** — monitoreo programado de certificados con alertas por webhook y email
 - **Notificaciones** — webhooks y Slack al completar un scan o detectar hallazgos criticos
 - **Escaneos programados** — re-escaneo automatico diario, semanal o mensual
+- **Modo claro / oscuro** — toggle en la barra de navegacion, preferencia persistida en el navegador
 
 ---
 
