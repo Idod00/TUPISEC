@@ -82,6 +82,12 @@ function getDb(): Database.Database {
       );
     `);
 
+    // Migration: add notify_email column to schedules
+    const scheduleCols = _db.prepare("PRAGMA table_info(schedules)").all() as { name: string }[];
+    if (!scheduleCols.some((c) => c.name === "notify_email")) {
+      _db.exec("ALTER TABLE schedules ADD COLUMN notify_email TEXT");
+    }
+
     // Notification configs table
     _db.exec(`
       CREATE TABLE IF NOT EXISTS notification_configs (
@@ -146,6 +152,17 @@ function getDb(): Database.Database {
         status TEXT NOT NULL,
         days_remaining INTEGER,
         result_json TEXT NOT NULL
+      );
+    `);
+
+    // API tokens table
+    _db.exec(`
+      CREATE TABLE IF NOT EXISTS api_tokens (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        token_prefix TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_used TEXT
       );
     `);
   }
@@ -322,14 +339,15 @@ export function createSchedule(
   targetUrl: string,
   interval: ScheduleRecord["interval"],
   cronExpr: string,
-  nextRun: string
+  nextRun: string,
+  notifyEmail?: string
 ): ScheduleRecord {
   const db = getDb();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO schedules (id, target_url, interval, cron_expr, enabled, created_at, next_run)
-     VALUES (?, ?, ?, ?, 1, ?, ?)`
-  ).run(id, targetUrl, interval, cronExpr, now, nextRun);
+    `INSERT INTO schedules (id, target_url, interval, cron_expr, enabled, created_at, next_run, notify_email)
+     VALUES (?, ?, ?, ?, 1, ?, ?, ?)`
+  ).run(id, targetUrl, interval, cronExpr, now, nextRun, notifyEmail ?? null);
   return db.prepare(`SELECT * FROM schedules WHERE id = ?`).get(id) as ScheduleRecord;
 }
 
@@ -533,4 +551,30 @@ export function listBackups(): { filename: string; size: number; created_at: str
       (a: { created_at: string }, b: { created_at: string }) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
+}
+
+// ─── API Tokens ────────────────────────────────────────────────────
+
+export function createApiToken(id: string, name: string, tokenPrefix: string): void {
+  const db = getDb();
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO api_tokens (id, name, token_prefix, created_at) VALUES (?, ?, ?, ?)`
+  ).run(id, name, tokenPrefix, now);
+}
+
+export function listApiTokens(): { id: string; name: string; token_prefix: string; created_at: string; last_used: string | null }[] {
+  const db = getDb();
+  return db.prepare(`SELECT * FROM api_tokens ORDER BY created_at DESC`).all() as { id: string; name: string; token_prefix: string; created_at: string; last_used: string | null }[];
+}
+
+export function deleteApiToken(id: string): boolean {
+  const db = getDb();
+  const result = db.prepare(`DELETE FROM api_tokens WHERE id = ?`).run(id);
+  return result.changes > 0;
+}
+
+export function touchApiToken(id: string): void {
+  const db = getDb();
+  db.prepare(`UPDATE api_tokens SET last_used = ? WHERE id = ?`).run(new Date().toISOString(), id);
 }

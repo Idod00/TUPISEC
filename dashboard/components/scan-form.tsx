@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Loader2, ChevronDown } from "lucide-react";
+import { Search, Loader2, ChevronDown, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useI18n } from "@/lib/i18n/context";
+import { cn } from "@/lib/utils";
 
 export function ScanForm() {
   const [url, setUrl] = useState("");
@@ -15,6 +16,7 @@ export function ScanForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [authOpen, setAuthOpen] = useState(false);
+  const [quickScan, setQuickScan] = useState(false);
   const router = useRouter();
   const { t } = useI18n();
 
@@ -41,7 +43,7 @@ export function ScanForm() {
       const res = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: targetUrl, cookies: cookies.trim() || undefined }),
+        body: JSON.stringify({ url: targetUrl, cookies: cookies.trim() || undefined, quick_scan: quickScan }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -80,6 +82,25 @@ export function ScanForm() {
             t("scan.scanButton")
           )}
         </Button>
+      </div>
+
+      <div className="flex items-center gap-2 text-sm">
+        <button
+          type="button"
+          onClick={() => setQuickScan(!quickScan)}
+          className={cn(
+            "flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors",
+            quickScan
+              ? "border-primary/50 bg-primary/10 text-primary"
+              : "border-border text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <Zap className="h-3 w-3" />
+          {quickScan ? "Quick Scan" : "Full Scan"}
+        </button>
+        <span className="text-xs text-muted-foreground">
+          {quickScan ? "Skips slow modules (ports, subdomains, injection tests)" : "Runs all security modules"}
+        </span>
       </div>
 
       <Collapsible open={authOpen} onOpenChange={setAuthOpen}>

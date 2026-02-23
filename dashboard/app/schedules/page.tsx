@@ -29,6 +29,7 @@ export default function SchedulesPage() {
   const [loading, setLoading] = useState(true);
   const [url, setUrl] = useState("");
   const [interval, setInterval] = useState<"daily" | "weekly" | "monthly">("daily");
+  const [notifyEmail, setNotifyEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const { t } = useI18n();
 
@@ -53,10 +54,11 @@ export default function SchedulesPage() {
       const res = await fetch("/api/schedules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target_url: url.trim(), interval }),
+        body: JSON.stringify({ target_url: url.trim(), interval, notify_email: notifyEmail.trim() || undefined }),
       });
       if (res.ok) {
         setUrl("");
+        setNotifyEmail("");
         fetchSchedules();
       }
     } finally {
@@ -87,12 +89,12 @@ export default function SchedulesPage() {
           <CardTitle className="text-sm font-medium">{t("schedules.addNew")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleAdd} className="flex gap-3">
+          <form onSubmit={handleAdd} className="flex flex-wrap gap-3">
             <Input
               placeholder="https://example.com"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              className="flex-1"
+              className="flex-1 min-w-[200px]"
               required
             />
             <Select value={interval} onValueChange={(v) => setInterval(v as typeof interval)}>
@@ -105,6 +107,13 @@ export default function SchedulesPage() {
                 <SelectItem value="monthly">{t("schedules.monthly")}</SelectItem>
               </SelectContent>
             </Select>
+            <Input
+              type="email"
+              placeholder="Notify email (optional)"
+              value={notifyEmail}
+              onChange={(e) => setNotifyEmail(e.target.value)}
+              className="w-[220px]"
+            />
             <Button type="submit" disabled={submitting}>
               {submitting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -139,6 +148,7 @@ export default function SchedulesPage() {
                   <TableHead>{t("schedules.status")}</TableHead>
                   <TableHead>{t("schedules.lastRun")}</TableHead>
                   <TableHead>{t("schedules.nextRun")}</TableHead>
+                  <TableHead>Notify</TableHead>
                   <TableHead className="w-[60px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -162,6 +172,9 @@ export default function SchedulesPage() {
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {s.next_run ? new Date(s.next_run).toLocaleString() : "—"}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-[150px] truncate">
+                      {s.notify_email ?? "—"}
                     </TableCell>
                     <TableCell>
                       <Button

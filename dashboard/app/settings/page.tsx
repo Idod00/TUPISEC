@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Save, Loader2, Key, Bell, Mail, Send, CheckCircle, XCircle, Database, HardDrive, Lock } from "lucide-react";
+import { Save, Loader2, Key, Bell, Mail, Send, CheckCircle, XCircle, Database, HardDrive, Lock, Trash2, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NotificationsManager } from "@/components/notifications-manager";
 import { Separator } from "@/components/ui/separator";
@@ -17,6 +17,14 @@ interface BackupEntry {
   filename: string;
   size: number;
   created_at: string;
+}
+
+interface ApiTokenEntry {
+  id: string;
+  name: string;
+  token_prefix: string;
+  created_at: string;
+  last_used: string | null;
 }
 
 export default function SettingsPage() {
@@ -55,6 +63,13 @@ export default function SettingsPage() {
   const [backupRunning, setBackupRunning] = useState(false);
   const [backupResult, setBackupResult] = useState<{ ok: boolean; filename?: string; error?: string } | null>(null);
 
+  // API Tokens state
+  const [tokens, setTokens] = useState<ApiTokenEntry[]>([]);
+  const [newTokenName, setNewTokenName] = useState("");
+  const [creatingToken, setCreatingToken] = useState(false);
+  const [newTokenValue, setNewTokenValue] = useState<string | null>(null);
+  const [copiedToken, setCopiedToken] = useState(false);
+
   const loadSettings = useCallback(() => {
     fetch("/api/settings")
       .then((r) => r.json())
@@ -87,11 +102,21 @@ export default function SettingsPage() {
       .catch(() => {});
   }, []);
 
+  const loadTokens = useCallback(() => {
+    fetch("/api/tokens")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setTokens(data);
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     loadSettings();
     loadAuthStatus();
     loadBackups();
-  }, [loadSettings, loadAuthStatus, loadBackups]);
+    loadTokens();
+  }, [loadSettings, loadAuthStatus, loadBackups, loadTokens]);
 
   const isVtSet = settings.find((s) => s.key === "virustotal_api_key")?.set ?? false;
   const isShodanSet = settings.find((s) => s.key === "shodan_api_key")?.set ?? false;
@@ -209,6 +234,43 @@ export default function SettingsPage() {
       setTimeout(() => setBackupResult(null), 6000);
     } finally {
       setBackupRunning(false);
+    }
+  };
+
+  const handleCreateToken = async () => {
+    if (!newTokenName.trim()) return;
+    setCreatingToken(true);
+    setNewTokenValue(null);
+    try {
+      const res = await fetch("/api/tokens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newTokenName.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setNewTokenName("");
+        setNewTokenValue(data.token);
+        loadTokens();
+      }
+    } finally {
+      setCreatingToken(false);
+    }
+  };
+
+  const handleDeleteToken = async (id: string) => {
+    await fetch(`/api/tokens/${id}`, { method: "DELETE" });
+    setTokens((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const handleCopyToken = async () => {
+    if (!newTokenValue) return;
+    try {
+      await navigator.clipboard.writeText(newTokenValue);
+      setCopiedToken(true);
+      setTimeout(() => setCopiedToken(false), 2000);
+    } catch {
+      // ignore
     }
   };
 
@@ -502,6 +564,89 @@ export default function SettingsPage() {
             </div>
           ) : (
             <p className="text-xs text-muted-foreground">No backups yet. Run a backup to create one.</p>
+          )}
+        </div>
+      </section>
+
+      <Separator className="mb-8" />
+
+      {/* API Tokens Section */}
+      <section className="mb-8">
+        <div className="flex items-center gap-2 mb-1">
+          <Key className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">API Tokens</h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Generate tokens for CI/CD pipelines. Use as: <code className="rounded bg-muted px-1 py-0.5 text-xs font-mono">Authorization: Bearer &lt;token&gt;</code>
+        </p>
+
+        <div className="rounded-lg border border-border/60 bg-card p-4 space-y-4">
+          {/* Create token form */}
+          <div className="flex gap-2">
+            <input
+              className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              placeholder="Token name (e.g. GitHub Actions)"
+              value={newTokenName}
+              onChange={(e) => setNewTokenName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCreateToken(); } }}
+            />
+            <Button size="sm" onClick={handleCreateToken} disabled={creatingToken || !newTokenName.trim()}>
+              {creatingToken ? <Loader2 className="h-4 w-4 animate-spin" /> : <Key className="h-4 w-4 mr-1.5" />}
+              Generate
+            </Button>
+          </div>
+
+          {/* Show new token value once */}
+          {newTokenValue && (
+            <div className="rounded-md border border-green-500/30 bg-green-500/5 p-3">
+              <p className="text-xs text-green-400 mb-2 font-medium">Token created — copy it now, it will not be shown again:</p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded bg-background px-2 py-1.5 text-xs font-mono break-all text-foreground border border-border">
+                  {newTokenValue}
+                </code>
+                <Button size="sm" variant="outline" onClick={handleCopyToken} className="shrink-0">
+                  {copiedToken ? <CheckCircle className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="mt-2 text-xs text-muted-foreground"
+                onClick={() => setNewTokenValue(null)}
+              >
+                Dismiss
+              </Button>
+            </div>
+          )}
+
+          {/* Token list */}
+          {tokens.length > 0 ? (
+            <div className="space-y-1">
+              {tokens.map((tok) => (
+                <div
+                  key={tok.id}
+                  className="flex items-center justify-between rounded-md bg-background px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{tok.name}</p>
+                    <p className="text-xs text-muted-foreground font-mono">
+                      {tok.token_prefix}... &bull; created {new Date(tok.created_at).toLocaleDateString()}
+                      {tok.last_used && ` &bull; last used ${new Date(tok.last_used).toLocaleDateString()}`}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 text-muted-foreground hover:text-red-400"
+                    onClick={() => handleDeleteToken(tok.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">No tokens yet. Generate one to use with CI/CD pipelines.</p>
           )}
         </div>
       </section>

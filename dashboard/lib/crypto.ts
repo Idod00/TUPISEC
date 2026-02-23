@@ -64,3 +64,35 @@ export function verifyPassword(password: string, hash: string, salt: string): bo
     return false;
   }
 }
+
+export function createApiToken(): { token: string; prefix: string } {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const nonce = crypto.randomBytes(24).toString("hex");
+  const hmac = crypto.createHmac("sha256", SECRET + ":api-token")
+    .update(`${timestamp}:${nonce}`)
+    .digest("hex");
+  const token = `tupisec_api_${timestamp}_${nonce}_${hmac}`;
+  const prefix = token.slice(0, 24);
+  return { token, prefix };
+}
+
+export function validateApiToken(token: string): boolean {
+  if (!token.startsWith("tupisec_api_")) return false;
+  const rest = token.slice("tupisec_api_".length);
+  const parts = rest.split("_");
+  if (parts.length < 3) return false;
+  const hmac = parts[parts.length - 1];
+  const nonce = parts[parts.length - 2];
+  const timestamp = parts[parts.length - 3];
+  const ts = parseInt(timestamp, 10);
+  // Tokens valid for 365 days
+  if (isNaN(ts) || Date.now() / 1000 - ts > 86400 * 365) return false;
+  const expected = crypto.createHmac("sha256", SECRET + ":api-token")
+    .update(`${timestamp}:${nonce}`)
+    .digest("hex");
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(hmac, "hex"));
+  } catch {
+    return false;
+  }
+}

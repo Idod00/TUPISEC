@@ -92,6 +92,7 @@ export interface ScheduleRecord {
   created_at: string;
   last_run: string | null;
   next_run: string | null;
+  notify_email: string | null;
 }
 
 export type FindingStatusValue = "open" | "in_progress" | "accepted" | "resolved" | "false_positive";

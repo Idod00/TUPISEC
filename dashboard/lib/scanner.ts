@@ -17,11 +17,19 @@ export function runScan(
   onProgress: ProgressCallback,
   onComplete: CompleteCallback,
   onError: ErrorCallback,
-  cookies?: string
+  cookies?: string,
+  quickScan?: boolean,
+  skipModules?: string
 ): ChildProcess {
   const args = [SCANNER_PATH, url, "--json-stdout", "--progress", "--quiet"];
   if (cookies) {
     args.push("--cookies", cookies);
+  }
+  if (quickScan) {
+    args.push("--quick");
+  }
+  if (skipModules) {
+    args.push("--skip-modules", skipModules);
   }
 
   const proc = spawn(PYTHON_BIN, args, {

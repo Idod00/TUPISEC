@@ -2351,6 +2351,211 @@ class TupiSecScanner:
             )
 
 
+
+    def scan_path_traversal(self):
+        """Path Traversal / LFI detection"""
+        # Parameters that commonly carry file paths
+        PATH_PARAMS = {"file", "path", "page", "doc", "document", "template", "load",
+                       "include", "read", "view", "folder", "dir", "name", "filename",
+                       "content", "resource", "item", "src"}
+
+        PAYLOADS = [
+            "../../../etc/passwd",
+            "../../../../etc/passwd",
+            "../../../../../etc/passwd",
+            "..%2F..%2F..%2Fetc%2Fpasswd",
+            "..%2F..%2F..%2F..%2Fetc%2Fpasswd",
+            "....//....//....//etc/passwd",
+            "%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd",
+            "../../../windows/win.ini",
+            "..\\..\\..\\windows\\win.ini",
+            "%2e%2e%5c%2e%2e%5c%2e%2e%5cwindows%5cwin.ini",
+        ]
+
+        LINUX_INDICATORS = ["root:x:", "root:0:", "daemon:", "/bin/bash", "/bin/sh", "/usr/sbin"]
+        WINDOWS_INDICATORS = ["[extensions]", "[fonts]", "[files]", "for 16-bit app support"]
+
+        found = set()
+
+        def is_traversal_response(text):
+            for ind in LINUX_INDICATORS + WINDOWS_INDICATORS:
+                if ind.lower() in text.lower():
+                    return True
+            return False
+
+        # Test URL parameters
+        for url in list(self.discovered_urls)[:60]:
+            parsed = urllib.parse.urlparse(url)
+            params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+            if not params:
+                continue
+            for param in list(params.keys()):
+                if param.lower() not in PATH_PARAMS:
+                    continue
+                for payload in PAYLOADS[:5]:
+                    try:
+                        new_params = dict(params)
+                        new_params[param] = [payload]
+                        new_query = urllib.parse.urlencode(new_params, doseq=True)
+                        test_url = urllib.parse.urlunparse(parsed._replace(query=new_query))
+                        resp = self.session.get(test_url, timeout=TIMEOUT, allow_redirects=True)
+                        if is_traversal_response(resp.text):
+                            key = f"{param}:{payload[:20]}"
+                            if key not in found:
+                                found.add(key)
+                                self.add_finding(
+                                    "CRITICAL", "Path Traversal",
+                                    f"Path Traversal in parameter '{param}'",
+                                    f"The parameter '{param}' in {urllib.parse.urlunparse(parsed._replace(query=''))} "
+                                    f"is vulnerable to path traversal. Payload: {payload}",
+                                    "Validate and sanitize all file path inputs. Use a whitelist of allowed files/paths. "
+                                    "Never pass user-supplied input directly to file system operations."
+                                )
+                            break
+                    except Exception:
+                        continue
+
+        # Test forms
+        for form in self.forms[:10]:
+            action = form.get("action", self.base_url)
+            method = form.get("method", "get").upper()
+            inputs = form.get("inputs", [])
+            for inp in inputs:
+                name = inp.get("name", "")
+                if not name or name.lower() not in PATH_PARAMS:
+                    continue
+                for payload in PAYLOADS[:4]:
+                    try:
+                        data = {i.get("name", ""): i.get("value", "") for i in inputs if i.get("name")}
+                        data[name] = payload
+                        if method == "POST":
+                            resp = self.session.post(action, data=data, timeout=TIMEOUT, allow_redirects=True)
+                        else:
+                            resp = self.session.get(action, params=data, timeout=TIMEOUT, allow_redirects=True)
+                        if is_traversal_response(resp.text):
+                            key = f"form:{name}"
+                            if key not in found:
+                                found.add(key)
+                                self.add_finding(
+                                    "CRITICAL", "Path Traversal",
+                                    f"Path Traversal via form field '{name}'",
+                                    f"The form field '{name}' at {action} is vulnerable to local file inclusion. Payload: {payload}",
+                                    "Validate and sanitize all file path inputs. Never pass form input to filesystem APIs."
+                                )
+                            break
+                    except Exception:
+                        continue
+
+    def scan_file_upload(self):
+        """File Upload vulnerability testing"""
+        import io as _io
+
+        # Find upload forms
+        upload_forms = []
+        for form in self.forms:
+            inputs = form.get("inputs", [])
+            if any(i.get("type", "").lower() == "file" for i in inputs):
+                upload_forms.append(form)
+
+        if not upload_forms:
+            return
+
+        # Test payloads: (filename, content, content_type, expected_accessible)
+        TEST_PAYLOADS = [
+            ("test.php", b"<?php echo 'TUPISEC_RCE_TEST_' . phpversion(); ?>", "application/x-php"),
+            ("test.php5", b"<?php echo 'TUPISEC_RCE_TEST_' . phpversion(); ?>", "application/octet-stream"),
+            ("test.phtml", b"<?php echo 'TUPISEC_RCE_TEST_' . phpversion(); ?>", "image/jpeg"),
+            ("test.asp", b"<% Response.Write(\"TUPISEC_RCE_TEST_\") %>", "text/plain"),
+            ("test.jsp", b'<% out.println("TUPISEC_RCE_TEST_"); %>', "text/plain"),
+            ("xss_test.html", b'<script>TUPISEC_XSS_TEST</script>', "text/html"),
+            ("svgtest.svg", b'<svg><script>TUPISEC_XSS_TEST</script></svg>', "image/svg+xml"),
+        ]
+
+        RCE_INDICATORS = ["TUPISEC_RCE_TEST_"]
+        XSS_INDICATORS = ["TUPISEC_XSS_TEST"]
+
+        for form in upload_forms[:3]:
+            action = form.get("action", self.base_url)
+            inputs = form.get("inputs", [])
+
+            for filename, content, mime in TEST_PAYLOADS[:4]:
+                try:
+                    files = {}
+                    data = {}
+                    for inp in inputs:
+                        name = inp.get("name")
+                        if not name:
+                            continue
+                        if inp.get("type", "").lower() == "file":
+                            files[name] = (filename, _io.BytesIO(content), mime)
+                        else:
+                            data[name] = inp.get("value", "test")
+
+                    # POST with multipart
+                    resp = self.session.post(
+                        action, files=files, data=data,
+                        timeout=TIMEOUT, allow_redirects=True
+                    )
+
+                    # Check if filename appears in response (potential path disclosure)
+                    if filename.split(".")[0] in resp.text:
+                        # Try to find and access the uploaded file
+                        # Look for URLs in response that contain the filename
+                        import re as _re
+                        _base = _re.escape(filename.split(".")[0])
+                        pattern = _re.compile(
+                            r"(?:src|href|action|url)\s*=\s*[\"']([^\"']*" +
+                            _base + r"[^\"']*)[\"']",
+                            _re.IGNORECASE
+                        )
+                        match = pattern.search(resp.text)
+                        if match:
+                            file_url = match.group(1)
+                            if not file_url.startswith("http"):
+                                file_url = self.base_url.rstrip("/") + "/" + file_url.lstrip("/")
+                            try:
+                                file_resp = self.session.get(file_url, timeout=TIMEOUT)
+                                content_str = file_resp.text
+
+                                if any(ind in content_str for ind in RCE_INDICATORS):
+                                    self.add_finding(
+                                        "CRITICAL", "File Upload",
+                                        f"Unrestricted File Upload — Remote Code Execution ({filename})",
+                                        f"Uploaded a {filename} file to {action} and it was executed at {file_url}. "
+                                        f"This allows remote code execution on the server.",
+                                        "Validate file type using magic bytes (not just extension/MIME). "
+                                        "Store uploads outside the web root. Never execute user-uploaded files."
+                                    )
+                                elif any(ind in content_str for ind in XSS_INDICATORS):
+                                    self.add_finding(
+                                        "HIGH", "File Upload",
+                                        f"Unrestricted File Upload — Stored XSS ({filename})",
+                                        f"Uploaded an HTML/SVG file to {action} that is served at {file_url}. "
+                                        f"This enables stored cross-site scripting.",
+                                        "Block upload of HTML/SVG/JS files. Set Content-Disposition: attachment for uploads. "
+                                        "Serve uploads from a separate cookieless domain."
+                                    )
+                                elif file_resp.status_code == 200 and filename.endswith((".php", ".asp", ".jsp")):
+                                    self.add_finding(
+                                        "HIGH", "File Upload",
+                                        f"Possible Unrestricted File Upload ({filename})",
+                                        f"Uploaded {filename} to {action} — file is accessible at {file_url} "
+                                        f"(HTTP {file_resp.status_code}). Server-side execution could not be confirmed "
+                                        f"but the file type was not blocked.",
+                                        "Validate and whitelist allowed file extensions and MIME types. "
+                                        "Store uploads outside the web root."
+                                    )
+                            except Exception:
+                                pass
+
+                    # Check if upload was blocked (good) or not (potentially bad)
+                    if resp.status_code in (200, 201, 302) and "error" not in resp.text.lower() and "invalid" not in resp.text.lower():
+                        # Warn about lack of client-side MIME validation
+                        pass
+
+                except Exception:
+                    continue
+
     # ─── Full Scan ────────────────────────────────────────────────────
     def run_full_scan(self, emit_progress=False):
         self.log(f"\n{'='*70}", Fore.GREEN)
@@ -2392,7 +2597,22 @@ class TupiSecScanner:
             ("prototype",        "Testing for prototype pollution",   lambda: self.scan_prototype_pollution()),
             ("s3_buckets",       "Testing for S3 misconfiguration",  lambda: self.scan_s3_buckets()),
             ("smuggling",        "Testing for HTTP request smuggling", lambda: self.scan_http_smuggling()),
+            ("path_traversal", "Testing for path traversal", lambda: self.scan_path_traversal()),
+            ("file_upload",    "Testing for file upload vulnerabilities", lambda: self.scan_file_upload()),
         ]
+
+        # Build set of modules to skip
+        skip_set = set()
+        if getattr(self, '_quick_mode', False):
+            skip_set = {"subdomains", "ports", "cmd_injection", "ssrf", "ssti",
+                        "nosql", "broken_links", "param_fuzz", "file_upload",
+                        "path_traversal", "smuggling", "prototype", "s3_buckets",
+                        "default_creds", "xxe"}
+        if getattr(self, '_skip_modules', ''):
+            for m in self._skip_modules.split(","):
+                skip_set.add(m.strip())
+        if skip_set:
+            phases = [(name, desc, fn) for name, desc, fn in phases if name not in skip_set]
 
         total = len(phases)
         resp = None
@@ -2425,9 +2645,13 @@ def main():
     parser.add_argument("--json-stdout", action="store_true", help="Output JSON report to stdout")
     parser.add_argument("--progress", action="store_true", help="Emit progress lines to stdout")
     parser.add_argument("--cookies", help="Cookie header string (e.g. 'session=abc; token=xyz')")
+    parser.add_argument("--quick", action="store_true", help="Quick scan (skip slow modules)")
+    parser.add_argument("--skip-modules", default="", help="Comma-separated list of modules to skip")
     args = parser.parse_args()
 
     scanner = TupiSecScanner(args.url, verbose=not args.quiet, cookies=args.cookies)
+    scanner._quick_mode = args.quick
+    scanner._skip_modules = args.skip_modules
 
     scanner.run_full_scan(emit_progress=args.progress)
 

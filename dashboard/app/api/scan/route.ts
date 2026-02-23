@@ -11,7 +11,7 @@ import { enrichScan } from "@/lib/enrichment";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { url, cookies } = body;
+    const { url, cookies, quick_scan, skip_modules } = body;
 
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
@@ -47,7 +47,9 @@ export async function POST(request: Request) {
         failScan(id);
         emitProgress(id, { phase: "error", step: 0, total: 10, message: error });
       },
-      cookies
+      cookies,
+      quick_scan === true,
+      typeof skip_modules === "string" ? skip_modules : undefined
     );
 
     return NextResponse.json({ id: record.id, status: "running" });

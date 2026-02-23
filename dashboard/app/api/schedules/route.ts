@@ -11,7 +11,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { target_url, interval } = body as { target_url: string; interval: ScheduleRecord["interval"] };
+  const { target_url, interval, notify_email } = body as { target_url: string; interval: ScheduleRecord["interval"]; notify_email?: string };
 
   if (!target_url || !interval) {
     return NextResponse.json({ error: "target_url and interval are required" }, { status: 400 });
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   const nextRun = computeNextRun(cronExpr);
   const id = randomUUID();
 
-  const schedule = createSchedule(id, target_url, interval, cronExpr, nextRun);
+  const schedule = createSchedule(id, target_url, interval, cronExpr, nextRun, notify_email || undefined);
   registerSchedule(schedule);
 
   return NextResponse.json(schedule, { status: 201 });
