@@ -20,6 +20,8 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://typescriptlang.org)
 [![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://sqlite.org)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+[![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/Idod00/TUPISEC/pkgs/container/tupisec)
+[![CI](https://img.shields.io/github/actions/workflow/status/Idod00/TUPISEC/docker-publish.yml?style=flat-square&label=Docker%20Build&logo=githubactions&logoColor=white)](https://github.com/Idod00/TUPISEC/actions)
 [![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](LICENSE)
 
 <br/>
@@ -174,28 +176,72 @@ TUPISEC/
 
 ## Inicio rapido
 
-### Requisitos previos
+### Opción A — Docker (recomendado)
+
+Requiere únicamente tener [Docker](https://docs.docker.com/get-docker/) instalado.
+
+```bash
+docker run -d \
+  --name tupisec \
+  -p 3000:3000 \
+  -v tupisec-data:/app/dashboard/data \
+  --restart unless-stopped \
+  ghcr.io/idod00/tupisec:latest
+```
+
+Abre [http://localhost:3000](http://localhost:3000) — listo.
+
+Para actualizar a la última versión:
+
+```bash
+docker pull ghcr.io/idod00/tupisec:latest
+docker rm -f tupisec
+docker run -d \
+  --name tupisec \
+  -p 3000:3000 \
+  -v tupisec-data:/app/dashboard/data \
+  --restart unless-stopped \
+  ghcr.io/idod00/tupisec:latest
+```
+
+> Los datos (base de datos y screenshots) se persisten en el volumen `tupisec-data` y **no se pierden** al actualizar.
+
+---
+
+### Opción B — Docker Compose
+
+```bash
+git clone https://github.com/Idod00/TUPISEC.git
+cd TUPISEC
+docker compose up -d
+```
+
+---
+
+### Opción C — Instalación manual
+
+#### Requisitos previos
 
 - Python `3.10+`
 - Node.js `18+`
 - `pip` y `npm`
 
-### 1 — Clonar el repositorio
+#### 1 — Clonar el repositorio
 
 ```bash
 git clone https://github.com/Idod00/TUPISEC.git
 cd TUPISEC
 ```
 
-### 2 — Configurar el scanner (Python)
+#### 2 — Configurar el scanner (Python)
 
 ```bash
 python3 -m venv venv
 source venv/bin/activate          # Windows: venv\Scripts\activate
-pip install requests beautifulsoup4 colorama
+pip install -r requirements.txt
 ```
 
-### 3 — Levantar el dashboard (Next.js)
+#### 3 — Levantar el dashboard (Next.js)
 
 ```bash
 cd dashboard
