@@ -22,6 +22,7 @@ import { ScreenshotCard } from "@/components/screenshot-card";
 import { VirusTotalCard } from "@/components/virustotal-card";
 import { ShodanCard } from "@/components/shodan-card";
 import { FuzzResultsCard } from "@/components/fuzz-results-card";
+import { SubdomainsCard } from "@/components/subdomains-card";
 import { calculateScore } from "@/lib/scoring";
 import type { ScanReport, ScanRecord, FindingStatusRecord, EnrichmentData } from "@/lib/types";
 
@@ -261,6 +262,11 @@ export default function ScanReportPage() {
       {/* DNS/WHOIS */}
       <div className="mb-6">
         <DnsWhoisCard dnsRecords={report.dns_records} whoisInfo={report.whois_info} />
+      </div>
+
+      {/* Subdomains */}
+      <div className="mb-6">
+        <SubdomainsCard subdomains={report.subdomains} />
       </div>
 
       {/* Threat Intelligence (VirusTotal + Shodan) */}

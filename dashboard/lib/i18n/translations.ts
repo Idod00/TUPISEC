@@ -228,6 +228,16 @@ export const translations = {
     "settings.notifications": "Notifications",
     "settings.notificationsDesc": "Receive alerts when scans complete or critical findings are detected.",
 
+    // Subdomains
+    "subdomains.title": "Subdomains Found",
+    "subdomains.subdomain": "Subdomain",
+    "subdomains.ip": "IP",
+    "subdomains.status": "HTTP",
+    "subdomains.risk": "Risk",
+    "subdomains.live": "live",
+    "subdomains.takeover": "takeover risk",
+    "subdomains.takoverRisk": "Takeover Risk",
+
     // Parameter Fuzzing
     "fuzz.title": "Parameter Fuzzing",
     "fuzz.subtitle": "Hidden parameters that changed application behavior",
@@ -478,6 +488,16 @@ export const translations = {
     "settings.configured": "Configurado",
     "settings.notifications": "Notificaciones",
     "settings.notificationsDesc": "Recibí alertas cuando los escaneos completen o se detecten hallazgos críticos.",
+
+    // Subdomains
+    "subdomains.title": "Subdominios Encontrados",
+    "subdomains.subdomain": "Subdominio",
+    "subdomains.ip": "IP",
+    "subdomains.status": "HTTP",
+    "subdomains.risk": "Riesgo",
+    "subdomains.live": "activos",
+    "subdomains.takeover": "riesgo de takeover",
+    "subdomains.takoverRisk": "Riesgo de Takeover",
 
     // Parameter Fuzzing
     "fuzz.title": "Fuzzing de Parámetros",
