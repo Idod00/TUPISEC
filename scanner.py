@@ -125,6 +125,7 @@ class TupiSecScanner:
         self.cve_data = []
         self.subdomains = []
         self.open_redirect_results = []
+        self.fuzz_results = []
         if cookies:
             for pair in cookies.split(";"):
                 pair = pair.strip()
@@ -1014,6 +1015,141 @@ class TupiSecScanner:
 
         self.log(f"  Discovered {len(self.subdomains)} subdomains", Fore.CYAN)
 
+    # ─── Module 16: Parameter Fuzzing ─────────────────────────────────
+    def scan_param_fuzz(self):
+        self.log("\n[*] Fuzzing for hidden/undocumented parameters...", Fore.GREEN)
+        self.fuzz_results = []
+
+        FUZZ_PARAMS = [
+            # Debug / feature flags
+            "debug", "test", "admin", "internal", "dev", "verbose",
+            "trace", "mode", "preview", "beta", "feature", "flag",
+            "enabled", "enable", "activate", "unlock",
+            # Auth / privilege
+            "role", "user", "userid", "user_id", "uid", "account",
+            "token", "auth", "key", "api_key", "secret", "bypass",
+            "superuser", "is_admin", "elevated", "priv", "level",
+            # File / path
+            "file", "path", "page", "include", "load", "read",
+            "dir", "folder", "template", "view", "layout", "resource",
+            # Action / command
+            "action", "cmd", "command", "exec", "run", "method",
+            "op", "operation", "do", "task", "process", "func",
+            # Data / API
+            "id", "pid", "oid", "ref", "src", "source", "dest",
+            "output", "format", "type", "callback", "jsonp",
+            "limit", "offset", "sort", "order", "filter", "q",
+            "search", "redirect_uri", "return_url", "next",
+        ]
+
+        # Values to probe — short list to keep request count manageable
+        FUZZ_VALUES = ["1", "true"]
+
+        ERROR_PATTERNS = [
+            "exception", "traceback", "stack trace", "fatal error",
+            "undefined variable", "undefined index", "syntax error",
+            "warning:", "notice:", "parse error", "call to undefined",
+            "mysql_fetch", "pg_query", "sqlite3", "odbc", "ora-",
+            "/var/www", "/home/", "/usr/local", "c:\\inetpub", "d:\\",
+            "root:", "/etc/passwd", "sh: ", "permission denied",
+        ]
+
+        urls_to_test = [self.target_url] + list(self.discovered_urls)[:8]
+        tested_combos = set()
+
+        for page_url in urls_to_test:
+            parsed = urllib.parse.urlparse(page_url)
+            existing_params = set(dict(urllib.parse.parse_qsl(parsed.query)).keys())
+
+            try:
+                baseline_resp = self.session.get(page_url, timeout=8, allow_redirects=True)
+                baseline_status = baseline_resp.status_code
+                baseline_len = len(baseline_resp.content)
+                baseline_text = baseline_resp.text.lower()
+            except Exception:
+                continue
+
+            for param in FUZZ_PARAMS:
+                if param in existing_params:
+                    continue
+
+                combo_key = (urllib.parse.urlunparse(parsed._replace(query="")), param)
+                if combo_key in tested_combos:
+                    continue
+                tested_combos.add(combo_key)
+
+                for val in FUZZ_VALUES:
+                    test_params = dict(urllib.parse.parse_qsl(parsed.query))
+                    test_params[param] = val
+                    test_url = urllib.parse.urlunparse(
+                        parsed._replace(query=urllib.parse.urlencode(test_params))
+                    )
+                    try:
+                        resp = self.session.get(test_url, timeout=8, allow_redirects=True)
+                        fuzz_status = resp.status_code
+                        fuzz_len = len(resp.content)
+                        fuzz_text = resp.text.lower()
+                    except Exception:
+                        continue
+
+                    status_changed = fuzz_status != baseline_status and fuzz_status not in (429, 503)
+                    size_diff = abs(fuzz_len - baseline_len)
+                    size_changed = size_diff > 300 and (size_diff / (baseline_len + 1)) > 0.20
+
+                    error_found = None
+                    for pattern in ERROR_PATTERNS:
+                        if pattern in fuzz_text and pattern not in baseline_text:
+                            error_found = pattern
+                            break
+
+                    if not (status_changed or size_changed or error_found):
+                        continue
+
+                    # Classify finding
+                    if error_found and any(p in error_found for p in
+                                           ["/var/www", "/home/", "/usr/local", "c:\\", "root:", "/etc/"]):
+                        sev = "HIGH"
+                        title = f"Path disclosure via hidden parameter '{param}'"
+                    elif error_found and any(p in error_found for p in
+                                             ["mysql_fetch", "pg_query", "sqlite3", "odbc", "ora-"]):
+                        sev = "HIGH"
+                        title = f"Database error disclosure via parameter '{param}'"
+                    elif error_found:
+                        sev = "MEDIUM"
+                        title = f"Error disclosure via hidden parameter '{param}'"
+                    elif status_changed:
+                        sev = "MEDIUM"
+                        title = f"Hidden parameter changes app behavior: '{param}' ({baseline_status}→{fuzz_status})"
+                    else:
+                        sev = "LOW"
+                        title = f"Hidden parameter alters response: '{param}' ({size_diff} bytes diff)"
+
+                    detail = (
+                        f"URL: {page_url}\n"
+                        f"Injected: ?{param}={val}\n"
+                        f"Baseline: HTTP {baseline_status}, {baseline_len} bytes\n"
+                        f"Fuzzed:   HTTP {fuzz_status}, {fuzz_len} bytes"
+                        + (f"\nDisclosure pattern: '{error_found}'" if error_found else "")
+                    )
+
+                    self.fuzz_results.append({
+                        "url": page_url,
+                        "param": param,
+                        "value": val,
+                        "baseline_status": baseline_status,
+                        "fuzz_status": fuzz_status,
+                        "size_diff": size_diff,
+                        "error_pattern": error_found,
+                    })
+                    self.add_finding(
+                        sev, "Parameter Fuzzing", title, detail,
+                        "Remove or restrict undocumented parameters. "
+                        "Ensure all parameters are authorized and properly sanitized."
+                    )
+                    break  # One finding per param per URL is enough
+
+        self.log(f"  Found {len(self.fuzz_results)} interesting parameters", Fore.CYAN)
+
     # ─── Module 8: Port Scanning (via nmap) ───────────────────────────
     def scan_ports(self):
         self.log("\n[*] Scanning common ports...", Fore.GREEN)
@@ -1234,6 +1370,7 @@ class TupiSecScanner:
             ("ssti", "Testing for template injection", lambda: self.scan_ssti()),
             ("cors", "Advanced CORS testing", lambda: self.scan_cors_advanced()),
             ("subdomains", "Enumerating subdomains", lambda: self.scan_subdomains()),
+            ("param_fuzz", "Fuzzing for hidden parameters", lambda: self.scan_param_fuzz()),
         ]
 
         total = len(phases)
@@ -1291,6 +1428,7 @@ def main():
             "whois_info": scanner.whois_info,
             "cve_data": scanner.cve_data,
             "subdomains": getattr(scanner, "subdomains", []),
+            "fuzz_results": getattr(scanner, "fuzz_results", []),
         }
         print(json.dumps(report_data))
     else:
