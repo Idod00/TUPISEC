@@ -510,3 +510,27 @@ export function getSSLCheckHistory(monitorId: string, limit = 20): SSLCheckHisto
     `SELECT * FROM ssl_check_history WHERE monitor_id = ? ORDER BY checked_at DESC LIMIT ?`
   ).all(monitorId, limit) as SSLCheckHistoryRecord[];
 }
+
+// ─── Backup ────────────────────────────────────────────────────────
+
+export async function backupDb(destPath: string): Promise<void> {
+  const db = getDb();
+  await db.backup(destPath);
+}
+
+export function listBackups(): { filename: string; size: number; created_at: string }[] {
+  const fs = require("fs") as typeof import("fs");
+  const backupDir = path.join(process.cwd(), "data", "backups");
+  if (!fs.existsSync(backupDir)) return [];
+  return fs
+    .readdirSync(backupDir)
+    .filter((f: string) => f.endsWith(".db"))
+    .map((f: string) => {
+      const stat = fs.statSync(path.join(backupDir, f));
+      return { filename: f, size: stat.size, created_at: stat.mtime.toISOString() };
+    })
+    .sort(
+      (a: { created_at: string }, b: { created_at: string }) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+}

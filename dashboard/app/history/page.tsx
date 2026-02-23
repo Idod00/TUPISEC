@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { History } from "lucide-react";
 import { GroupedHistoryTable } from "@/components/grouped-history-table";
+import { ScoreTrendChart } from "@/components/score-trend-chart";
 import { useI18n } from "@/lib/i18n/context";
 import type { ScanRecord } from "@/lib/types";
 
@@ -39,6 +40,7 @@ export default function HistoryPage() {
         <History className="h-5 w-5 text-primary" />
         <h1 className="text-2xl font-bold">{t("history.title")}</h1>
       </div>
+      <ScoreTrendChart scans={scans} />
       <GroupedHistoryTable scans={scans} onDelete={handleDelete} onDeleteGroup={handleDeleteGroup} />
     </div>
   );

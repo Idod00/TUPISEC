@@ -2248,6 +2248,109 @@ class TupiSecScanner:
 
         return report_text
 
+    def scan_http_smuggling(self):
+        """HTTP Request Smuggling detection (CL.TE / TE.CL timing-based)"""
+        import socket
+        import ssl as _ssl_mod
+        import time as _time
+
+        self.log("\n[*] Testing for HTTP request smuggling...", __import__("colorama").Fore.GREEN)
+
+        parsed = __import__("urllib.parse", fromlist=["urlparse"]).urlparse(self.base_url)
+        host = parsed.hostname
+        if not host:
+            return
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        use_ssl = parsed.scheme == "https"
+        req_path = parsed.path or "/"
+        if parsed.query:
+            req_path += "?" + parsed.query
+
+        findings = []
+
+        def raw_probe(raw_request, timeout_sec=8.0):
+            """Send raw HTTP request and return response or "TIMEOUT" / "ERROR"."""
+            try:
+                sock = socket.create_connection((host, port), timeout=5)
+                try:
+                    if use_ssl:
+                        ctx = _ssl_mod.create_default_context()
+                        ctx.check_hostname = False
+                        ctx.verify_mode = _ssl_mod.CERT_NONE
+                        sock = ctx.wrap_socket(sock, server_hostname=host)
+
+                    sock.settimeout(timeout_sec)
+                    sock.sendall(raw_request.encode("utf-8", errors="replace"))
+                    start = _time.time()
+                    chunks = []
+                    try:
+                        while True:
+                            chunk = sock.recv(4096)
+                            if not chunk:
+                                break
+                            chunks.append(chunk)
+                            if _time.time() - start > timeout_sec:
+                                return "TIMEOUT"
+                    except socket.timeout:
+                        return "TIMEOUT"
+                    return b"".join(chunks).decode("utf-8", errors="replace")
+                finally:
+                    sock.close()
+            except Exception as ex:
+                return f"ERROR:{ex}"
+
+        # --- CL.TE probe ---
+        clte_req = (
+            f"POST {req_path} HTTP/1.1\r\n"
+            f"Host: {host}\r\n"
+            "Content-Type: application/x-www-form-urlencoded\r\n"
+            "Content-Length: 6\r\n"
+            "Transfer-Encoding: chunked\r\n"
+            "Connection: keep-alive\r\n"
+            "\r\n"
+            "0\r\n"
+            "\r\n"
+        )
+
+        # --- TE.CL probe ---
+        tecl_req = (
+            f"POST {req_path} HTTP/1.1\r\n"
+            f"Host: {host}\r\n"
+            "Content-Type: application/x-www-form-urlencoded\r\n"
+            "Content-Length: 4\r\n"
+            "Transfer-Encoding: chunked\r\n"
+            "Connection: keep-alive\r\n"
+            "\r\n"
+            "a\r\n"
+        )
+
+        try:
+            clte_result = raw_probe(clte_req, timeout_sec=7.0)
+            if clte_result == "TIMEOUT":
+                findings.append(("CL.TE", "HIGH",
+                    "The server appears to use Content-Length for request framing while supporting Transfer-Encoding: chunked. "
+                    "An intermediary using TE framing could allow request smuggling."))
+
+            tecl_result = raw_probe(tecl_req, timeout_sec=7.0)
+            if tecl_result == "TIMEOUT":
+                findings.append(("TE.CL", "HIGH",
+                    "The server appears to use Transfer-Encoding for request framing but an intermediary may use Content-Length. "
+                    "This desync can enable TE.CL request smuggling."))
+        except Exception:
+            pass
+
+        for variant, severity, detail in findings:
+            self.add_finding(
+                severity,
+                "HTTP Smuggling",
+                f"Possible HTTP Request Smuggling ({variant})",
+                detail,
+                "Ensure consistent HTTP/1.1 request framing between all proxies and backend servers. "
+                "Prefer HTTP/2 end-to-end to eliminate CL/TE ambiguity. Reject requests with both "
+                "Content-Length and Transfer-Encoding headers at the edge."
+            )
+
+
     # ─── Full Scan ────────────────────────────────────────────────────
     def run_full_scan(self, emit_progress=False):
         self.log(f"\n{'='*70}", Fore.GREEN)
@@ -2288,6 +2391,7 @@ class TupiSecScanner:
             ("crlf",             "Testing for CRLF injection",        lambda: self.scan_crlf_injection()),
             ("prototype",        "Testing for prototype pollution",   lambda: self.scan_prototype_pollution()),
             ("s3_buckets",       "Testing for S3 misconfiguration",  lambda: self.scan_s3_buckets()),
+            ("smuggling",        "Testing for HTTP request smuggling", lambda: self.scan_http_smuggling()),
         ]
 
         total = len(phases)

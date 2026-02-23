@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Shield, History, Home, Layers, Clock, Settings2, LockKeyhole, Sun, Moon } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Shield, History, Home, Layers, Clock, Settings2, LockKeyhole, Sun, Moon, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/context";
 import { useTheme } from "@/lib/theme/context";
+import { useEffect, useState } from "react";
 import type { TranslationKey } from "@/lib/i18n/translations";
 
 const links: { href: string; key: TranslationKey; icon: React.ElementType }[] = [
@@ -19,8 +20,23 @@ const links: { href: string; key: TranslationKey; icon: React.ElementType }[] = 
 
 export function NavBar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { lang, setLang, t } = useI18n();
   const { theme, toggleTheme } = useTheme();
+  const [authEnabled, setAuthEnabled] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/status")
+      .then((r) => r.json())
+      .then((data) => setAuthEnabled(data.enabled))
+      .catch(() => {});
+  }, []);
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  };
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-md">
@@ -87,6 +103,18 @@ export function NavBar() {
         >
           {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
         </button>
+
+        {/* Logout button (only when auth is enabled) */}
+        {authEnabled && (
+          <button
+            onClick={handleLogout}
+            aria-label="Sign out"
+            title="Sign out"
+            className="flex items-center justify-center rounded-md border border-border/60 p-1.5 text-muted-foreground hover:text-red-400 hover:border-red-400/60 transition-colors"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
     </header>
   );

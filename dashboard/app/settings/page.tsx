@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Save, Loader2, Key, Bell, Mail, Send, CheckCircle, XCircle } from "lucide-react";
+import { Save, Loader2, Key, Bell, Mail, Send, CheckCircle, XCircle, Database, HardDrive, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NotificationsManager } from "@/components/notifications-manager";
 import { Separator } from "@/components/ui/separator";
@@ -11,6 +11,12 @@ interface SettingEntry {
   set: boolean;
   value?: string;
   updated_at: string;
+}
+
+interface BackupEntry {
+  filename: string;
+  size: number;
+  created_at: string;
 }
 
 export default function SettingsPage() {
@@ -35,12 +41,25 @@ export default function SettingsPage() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
 
+  // Auth state
+  const [authEnabled, setAuthEnabled] = useState(false);
+  const [authConfigured, setAuthConfigured] = useState(false);
+  const [currentPass, setCurrentPass] = useState("");
+  const [newPass, setNewPass] = useState("");
+  const [confirmPass, setConfirmPass] = useState("");
+  const [authSaving, setAuthSaving] = useState(false);
+  const [authResult, setAuthResult] = useState<{ ok: boolean; error?: string } | null>(null);
+
+  // Backup state
+  const [backups, setBackups] = useState<BackupEntry[]>([]);
+  const [backupRunning, setBackupRunning] = useState(false);
+  const [backupResult, setBackupResult] = useState<{ ok: boolean; filename?: string; error?: string } | null>(null);
+
   const loadSettings = useCallback(() => {
     fetch("/api/settings")
       .then((r) => r.json())
       .then((data: SettingEntry[]) => {
         setSettings(data);
-        // Pre-fill non-secret SMTP fields
         const get = (key: string) => data.find((s) => s.key === key)?.value ?? "";
         setSmtpHost(get("smtp_host"));
         setSmtpPort(get("smtp_port") || "587");
@@ -51,7 +70,28 @@ export default function SettingsPage() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => { loadSettings(); }, [loadSettings]);
+  const loadAuthStatus = useCallback(() => {
+    fetch("/api/auth/status")
+      .then((r) => r.json())
+      .then((data) => {
+        setAuthEnabled(data.enabled);
+        setAuthConfigured(data.configured);
+      })
+      .catch(() => {});
+  }, []);
+
+  const loadBackups = useCallback(() => {
+    fetch("/api/backup")
+      .then((r) => r.json())
+      .then(setBackups)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    loadSettings();
+    loadAuthStatus();
+    loadBackups();
+  }, [loadSettings, loadAuthStatus, loadBackups]);
 
   const isVtSet = settings.find((s) => s.key === "virustotal_api_key")?.set ?? false;
   const isShodanSet = settings.find((s) => s.key === "shodan_api_key")?.set ?? false;
@@ -123,11 +163,66 @@ export default function SettingsPage() {
     }
   };
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPass !== confirmPass) {
+      setAuthResult({ ok: false, error: "Passwords don't match" });
+      return;
+    }
+    if (newPass.length < 8) {
+      setAuthResult({ ok: false, error: "Password must be at least 8 characters" });
+      return;
+    }
+    setAuthSaving(true);
+    setAuthResult(null);
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: currentPass, newPassword: newPass }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCurrentPass(""); setNewPass(""); setConfirmPass("");
+        setAuthResult({ ok: true });
+      } else {
+        setAuthResult({ ok: false, error: data.error });
+      }
+      setTimeout(() => setAuthResult(null), 5000);
+    } finally {
+      setAuthSaving(false);
+    }
+  };
+
+  const handleRunBackup = async () => {
+    setBackupRunning(true);
+    setBackupResult(null);
+    try {
+      const res = await fetch("/api/backup", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setBackupResult({ ok: true, filename: data.filename });
+        loadBackups();
+      } else {
+        setBackupResult({ ok: false, error: data.error });
+      }
+      setTimeout(() => setBackupResult(null), 6000);
+    } finally {
+      setBackupRunning(false);
+    }
+  };
+
+  function formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <h1 className="text-2xl font-bold mb-2">Settings</h1>
       <p className="text-sm text-muted-foreground mb-8">
-        Configure API integrations, SMTP email, and notification webhooks.
+        Configure API integrations, SMTP email, authentication, backups, and notification webhooks.
       </p>
 
       {/* API Keys Section */}
@@ -137,7 +232,7 @@ export default function SettingsPage() {
           <h2 className="text-lg font-semibold">API Keys</h2>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          Add API keys to enable automatic enrichment after each scan.
+          Add API keys to enable automatic enrichment after each scan. Keys are stored encrypted.
         </p>
 
         <div className="space-y-4 rounded-lg border border-border/60 bg-card p-4">
@@ -267,7 +362,6 @@ export default function SettingsPage() {
             {smtpSaved && <span className="text-sm text-green-400">Saved!</span>}
           </div>
 
-          {/* Test email */}
           <Separator />
           <div>
             <p className="text-xs text-muted-foreground mb-2">Send a test email to verify your SMTP configuration:</p>
@@ -290,6 +384,125 @@ export default function SettingsPage() {
               </div>
             )}
           </div>
+        </div>
+      </section>
+
+      <Separator className="mb-8" />
+
+      {/* Password / Authentication Section */}
+      {authEnabled && (
+        <>
+          <section className="mb-8">
+            <div className="flex items-center gap-2 mb-1">
+              <Lock className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-lg font-semibold">Authentication</h2>
+              {authConfigured && <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-xs text-green-400">Password set</span>}
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Change your dashboard login password.
+            </p>
+
+            <form onSubmit={handleChangePassword} className="space-y-4 rounded-lg border border-border/60 bg-card p-4">
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Current Password</label>
+                <input
+                  type="password"
+                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  value={currentPass}
+                  onChange={(e) => setCurrentPass(e.target.value)}
+                  placeholder="Enter current password"
+                  autoComplete="current-password"
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">New Password</label>
+                  <input
+                    type="password"
+                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={newPass}
+                    onChange={(e) => setNewPass(e.target.value)}
+                    placeholder="At least 8 characters"
+                    autoComplete="new-password"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">Confirm New Password</label>
+                  <input
+                    type="password"
+                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={confirmPass}
+                    onChange={(e) => setConfirmPass(e.target.value)}
+                    placeholder="Repeat new password"
+                    autoComplete="new-password"
+                    required
+                  />
+                </div>
+              </div>
+              {authResult && (
+                <div className={`flex items-center gap-2 text-sm ${authResult.ok ? "text-green-400" : "text-red-400"}`}>
+                  {authResult.ok ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                  {authResult.ok ? "Password changed successfully!" : authResult.error}
+                </div>
+              )}
+              <Button type="submit" size="sm" disabled={authSaving || !currentPass || !newPass || !confirmPass}>
+                {authSaving ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Lock className="h-4 w-4 mr-1.5" />}
+                Change Password
+              </Button>
+            </form>
+          </section>
+
+          <Separator className="mb-8" />
+        </>
+      )}
+
+      {/* Backup Section */}
+      <section className="mb-8">
+        <div className="flex items-center gap-2 mb-1">
+          <HardDrive className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">Database Backups</h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Automatic backups run daily at 02:00. Up to 7 backups are retained. You can also trigger a manual backup.
+        </p>
+
+        <div className="rounded-lg border border-border/60 bg-card p-4 space-y-4">
+          <div className="flex items-center gap-3">
+            <Button size="sm" variant="outline" onClick={handleRunBackup} disabled={backupRunning}>
+              {backupRunning ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Database className="h-4 w-4 mr-1.5" />}
+              Run Backup Now
+            </Button>
+            {backupResult && (
+              <div className={`flex items-center gap-2 text-sm ${backupResult.ok ? "text-green-400" : "text-red-400"}`}>
+                {backupResult.ok ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                {backupResult.ok ? `Created: ${backupResult.filename}` : `Failed: ${backupResult.error}`}
+              </div>
+            )}
+          </div>
+
+          {backups.length > 0 ? (
+            <div>
+              <p className="text-xs text-muted-foreground mb-2">{backups.length} backup(s) stored:</p>
+              <div className="space-y-1 max-h-48 overflow-y-auto">
+                {backups.map((b) => (
+                  <div
+                    key={b.filename}
+                    className="flex items-center justify-between rounded-md bg-background px-3 py-1.5 text-xs font-mono"
+                  >
+                    <span className="text-foreground truncate">{b.filename}</span>
+                    <div className="flex items-center gap-3 ml-4 shrink-0 text-muted-foreground">
+                      <span>{formatBytes(b.size)}</span>
+                      <span>{new Date(b.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">No backups yet. Run a backup to create one.</p>
+          )}
         </div>
       </section>
 

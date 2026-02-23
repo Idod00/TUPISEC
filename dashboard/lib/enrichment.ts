@@ -1,4 +1,5 @@
-import { getScan, getSetting, updateScanEnrichment } from "./db";
+import { getScan, updateScanEnrichment } from "./db";
+import { getSecureSetting } from "./secure-settings";
 import type { VirusTotalData, ShodanData, EnrichmentData } from "./types";
 
 async function resolveIp(hostname: string): Promise<string | null> {
@@ -62,8 +63,8 @@ export async function enrichScan(scanId: string): Promise<EnrichmentData | null>
   const scan = getScan(scanId);
   if (!scan) return null;
 
-  const vtKey = getSetting("virustotal_api_key");
-  const shodanKey = getSetting("shodan_api_key");
+  const vtKey = getSecureSetting("virustotal_api_key");
+  const shodanKey = getSecureSetting("shodan_api_key");
 
   if (!vtKey && !shodanKey) return null;
 

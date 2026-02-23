@@ -1,4 +1,5 @@
 import { getSetting } from "./db";
+import { getSecureSetting } from "./secure-settings";
 import type { SSLMonitorRecord, SSLCheckResult } from "./types";
 
 async function getTransporter() {
@@ -9,7 +10,7 @@ async function getTransporter() {
   const port = parseInt(getSetting("smtp_port") ?? "587", 10);
   const secure = getSetting("smtp_secure") === "true";
   const user = getSetting("smtp_user") ?? "";
-  const pass = getSetting("smtp_pass") ?? "";
+  const pass = getSecureSetting("smtp_pass") ?? "";
 
   return nodemailer.createTransport({
     host,
