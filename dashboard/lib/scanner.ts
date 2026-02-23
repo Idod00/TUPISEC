@@ -3,7 +3,9 @@ import path from "path";
 import type { ScanProgress, ScanReport } from "./types";
 
 const PROJECT_ROOT = path.resolve(process.cwd(), "..");
-const PYTHON_BIN = path.join(PROJECT_ROOT, "venv", "bin", "python3");
+// In Docker the venv is at /app/venv; locally it's one level up from dashboard/
+const VENV_PYTHON = path.join(PROJECT_ROOT, "venv", "bin", "python3");
+const PYTHON_BIN = require("fs").existsSync(VENV_PYTHON) ? VENV_PYTHON : "python3";
 const SCANNER_PATH = path.join(PROJECT_ROOT, "scanner.py");
 
 type ProgressCallback = (progress: ScanProgress) => void;

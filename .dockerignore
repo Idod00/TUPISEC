@@ -1,0 +1,26 @@
+# Git
+.git
+.gitignore
+
+# Local dev
+venv/
+captures/
+reports/
+
+# Dashboard dev artifacts
+dashboard/.next/cache
+dashboard/node_modules
+dashboard/data/
+
+# Docs / extras
+docs/
+scripts/
+tools/
+configs/
+*.md
+*.sh
+
+# Docker files themselves
+Dockerfile
+docker-compose.yml
+.dockerignore
