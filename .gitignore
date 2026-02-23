@@ -4,3 +4,16 @@ __pycache__/
 .env
 *.log
 .DS_Store
+
+# SQLite runtime files
+dashboard/data/*.db-shm
+dashboard/data/*.db-wal
+dashboard/data/*.db-journal
+
+# Generated content
+captures/
+dashboard/data/screenshots/
+
+# Next.js
+dashboard/.next/
+dashboard/node_modules/
