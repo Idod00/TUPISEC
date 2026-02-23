@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import {
-  LockKeyhole, LockOpen, Trash2, RefreshCw, Loader2, AlertTriangle,
+  LockKeyhole, Trash2, RefreshCw, Loader2, AlertTriangle,
   CheckCircle, XCircle, Clock, Calendar, Pencil, Save, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/context";
 import type { SSLMonitorRecord, SSLCheckResult } from "@/lib/types";
 
 interface Props {
@@ -39,27 +40,8 @@ function DaysBar({ days }: { days: number | null }) {
   );
 }
 
-function StatusBadge({ status }: { status: string | null }) {
-  if (!status)
-    return (
-      <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-        Not checked
-      </span>
-    );
-  const map = {
-    ok: "bg-green-500/10 text-green-400",
-    warning: "bg-yellow-500/10 text-yellow-400",
-    error: "bg-red-500/10 text-red-400",
-  };
-  const labels = { ok: "OK", warning: "Warning", error: "Error" };
-  return (
-    <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", map[status as keyof typeof map] ?? "bg-muted text-muted-foreground")}>
-      {labels[status as keyof typeof labels] ?? status}
-    </span>
-  );
-}
-
 export function SSLMonitorCard({ monitor, onDelete, onCheckNow, onUpdate }: Props) {
+  const { t } = useI18n();
   const [checking, setChecking] = useState(false);
   const [latestResult, setLatestResult] = useState<SSLCheckResult | null>(null);
   const [latestStatus, setLatestStatus] = useState<string | null>(monitor.last_status);
@@ -112,7 +94,15 @@ export function SSLMonitorCard({ monitor, onDelete, onCheckNow, onUpdate }: Prop
     }
   };
 
-  const result = latestResult;
+  const statusLabel =
+    latestStatus === "ok"
+      ? t("ssl.status.ok")
+      : latestStatus === "warning"
+      ? t("ssl.status.warning")
+      : latestStatus === "error"
+      ? t("ssl.status.error")
+      : null;
+
   const StatusIcon =
     latestStatus === "ok"
       ? CheckCircle
@@ -131,6 +121,14 @@ export function SSLMonitorCard({ monitor, onDelete, onCheckNow, onUpdate }: Prop
       ? "text-red-400"
       : "text-muted-foreground";
 
+  const statusColorMap = {
+    ok: "bg-green-500/10 text-green-400",
+    warning: "bg-yellow-500/10 text-yellow-400",
+    error: "bg-red-500/10 text-red-400",
+  };
+
+  const result = latestResult;
+
   return (
     <div className="rounded-lg border border-border/60 bg-card p-4">
       {/* Header */}
@@ -146,9 +144,19 @@ export function SSLMonitorCard({ monitor, onDelete, onCheckNow, onUpdate }: Prop
         </div>
         <div className="flex items-center gap-2">
           {currentMonitor.enabled === 0 && (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">Disabled</span>
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+              {t("ssl.disabled")}
+            </span>
           )}
-          <StatusBadge status={latestStatus} />
+          {latestStatus ? (
+            <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", statusColorMap[latestStatus as keyof typeof statusColorMap] ?? "bg-muted text-muted-foreground")}>
+              {statusLabel}
+            </span>
+          ) : (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+              {t("ssl.notChecked")}
+            </span>
+          )}
         </div>
       </div>
 
@@ -158,8 +166,8 @@ export function SSLMonitorCard({ monitor, onDelete, onCheckNow, onUpdate }: Prop
           <div className="flex justify-between text-xs text-muted-foreground mb-1">
             <span>
               {latestDays < 0
-                ? `Expired ${Math.abs(latestDays)} days ago`
-                : `${latestDays} days remaining`}
+                ? t("ssl.expiredAgo").replace("{n}", String(Math.abs(latestDays)))
+                : t("ssl.daysRemaining").replace("{n}", String(latestDays))}
             </span>
           </div>
           <DaysBar days={latestDays} />
@@ -177,29 +185,31 @@ export function SSLMonitorCard({ monitor, onDelete, onCheckNow, onUpdate }: Prop
       {result && !result.error && (
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-3 text-xs">
           <div>
-            <span className="text-muted-foreground">Issuer</span>
+            <span className="text-muted-foreground">{t("ssl.issuer")}</span>
             <p className="font-medium truncate">{result.issuer?.O ?? result.issuer?.CN ?? "—"}</p>
           </div>
           <div>
-            <span className="text-muted-foreground">Expires</span>
+            <span className="text-muted-foreground">{t("ssl.expires")}</span>
             <p className="font-medium">
               {result.valid_to ? new Date(result.valid_to).toLocaleDateString() : "—"}
             </p>
           </div>
           <div>
-            <span className="text-muted-foreground">Protocol</span>
+            <span className="text-muted-foreground">{t("ssl.protocol")}</span>
             <p className="font-mono font-medium">{result.protocol}</p>
           </div>
           <div>
-            <span className="text-muted-foreground">Chain</span>
+            <span className="text-muted-foreground">{t("ssl.chain")}</span>
             <p className={cn("font-medium", result.chain_valid ? "text-green-400" : "text-red-400")}>
-              {result.chain_valid ? "Valid" : "Invalid"}
+              {result.chain_valid ? t("ssl.chainValid") : t("ssl.chainInvalid")}
             </p>
           </div>
           {result.sans.length > 0 && (
             <div className="col-span-2">
-              <span className="text-muted-foreground">SANs</span>
-              <p className="font-mono text-xs truncate">{result.sans.slice(0, 3).join(", ")}{result.sans.length > 3 ? ` +${result.sans.length - 3}` : ""}</p>
+              <span className="text-muted-foreground">{t("ssl.sans")}</span>
+              <p className="font-mono text-xs truncate">
+                {result.sans.slice(0, 3).join(", ")}{result.sans.length > 3 ? ` +${result.sans.length - 3}` : ""}
+              </p>
             </div>
           )}
         </div>
@@ -212,7 +222,7 @@ export function SSLMonitorCard({ monitor, onDelete, onCheckNow, onUpdate }: Prop
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
-                <label className="block text-xs text-muted-foreground mb-1">Domain</label>
+                <label className="block text-xs text-muted-foreground mb-1">{t("ssl.domain")}</label>
                 <input
                   className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"
                   value={editForm.domain}
@@ -220,7 +230,7 @@ export function SSLMonitorCard({ monitor, onDelete, onCheckNow, onUpdate }: Prop
                 />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">Port</label>
+                <label className="block text-xs text-muted-foreground mb-1">{t("ssl.port")}</label>
                 <input
                   type="number"
                   min={1}
@@ -231,19 +241,19 @@ export function SSLMonitorCard({ monitor, onDelete, onCheckNow, onUpdate }: Prop
                 />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">Interval</label>
+                <label className="block text-xs text-muted-foreground mb-1">{t("schedules.interval")}</label>
                 <select
                   className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                   value={editForm.interval}
                   onChange={(e) => setEditForm((f) => ({ ...f, interval: e.target.value as "daily" | "weekly" | "monthly" }))}
                 >
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
+                  <option value="daily">{t("schedules.daily")}</option>
+                  <option value="weekly">{t("schedules.weekly")}</option>
+                  <option value="monthly">{t("schedules.monthly")}</option>
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">Alert days before expiry</label>
+                <label className="block text-xs text-muted-foreground mb-1">{t("ssl.alertDays")}</label>
                 <input
                   type="number"
                   min={1}
@@ -254,7 +264,7 @@ export function SSLMonitorCard({ monitor, onDelete, onCheckNow, onUpdate }: Prop
                 />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">Alert email (optional)</label>
+                <label className="block text-xs text-muted-foreground mb-1">{t("ssl.alertEmail")}</label>
                 <input
                   type="email"
                   className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
@@ -271,12 +281,12 @@ export function SSLMonitorCard({ monitor, onDelete, onCheckNow, onUpdate }: Prop
                 onChange={(e) => setEditForm((f) => ({ ...f, enabled: e.target.checked }))}
                 className="rounded"
               />
-              <span className="text-muted-foreground">Monitor enabled</span>
+              <span className="text-muted-foreground">{t("ssl.edit.enabled")}</span>
             </label>
             <div className="flex gap-2">
               <Button size="sm" onClick={handleSave} disabled={saving || !editForm.domain}>
                 {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Save className="h-3.5 w-3.5 mr-1" />}
-                Save
+                {t("common.save")}
               </Button>
               <Button size="sm" variant="outline" onClick={() => {
                 setEditing(false);
@@ -290,7 +300,7 @@ export function SSLMonitorCard({ monitor, onDelete, onCheckNow, onUpdate }: Prop
                 });
               }}>
                 <X className="h-3.5 w-3.5 mr-1" />
-                Cancel
+                {t("common.cancel")}
               </Button>
             </div>
           </div>
@@ -304,12 +314,12 @@ export function SSLMonitorCard({ monitor, onDelete, onCheckNow, onUpdate }: Prop
             <Clock className="h-3 w-3" />
             {currentMonitor.last_check
               ? new Date(currentMonitor.last_check).toLocaleString()
-              : "Never checked"}
+              : t("ssl.neverChecked")}
           </span>
           <span className="capitalize">{currentMonitor.interval}</span>
           <span className="flex items-center gap-1">
             <Calendar className="h-3 w-3" />
-            Alerts: {currentMonitor.notify_days_before}d
+            {t("ssl.alertsLabel").replace("{n}", String(currentMonitor.notify_days_before))}
           </span>
         </div>
         <div className="flex gap-1.5">

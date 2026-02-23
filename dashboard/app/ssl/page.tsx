@@ -166,7 +166,7 @@ export default function SSLPage() {
               {t("ssl.addMonitor")}
             </Button>
             <Button type="button" variant="outline" size="sm" onClick={() => setShowForm(false)}>
-              {t("common.delete") === "Delete" ? "Cancel" : "Cancelar"}
+              {t("common.cancel")}
             </Button>
           </div>
         </form>
