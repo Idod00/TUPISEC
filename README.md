@@ -83,6 +83,78 @@
 
 ## Modulos de escaneo
 
+23 modulos activos organizados por categoria.
+
+### Inyeccion y ejecucion
+
+<table>
+  <thead>
+    <tr>
+      <th>Modulo</th>
+      <th>Descripcion</th>
+      <th>Severidad</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><b>SQL Injection</b></td>
+      <td>Prueba formularios con 10 payloads reales contra inputs activos</td>
+      <td><code>CRITICAL</code></td>
+    </tr>
+    <tr>
+      <td><b>XSS</b></td>
+      <td>Inyeccion de scripts en parametros GET y formularios POST</td>
+      <td><code>HIGH</code></td>
+    </tr>
+    <tr>
+      <td><b>SSTI</b></td>
+      <td>Detecta template injection (Jinja2, Twig, Freemarker) via evaluacion matematica</td>
+      <td><code>CRITICAL</code></td>
+    </tr>
+    <tr>
+      <td><b>XXE</b></td>
+      <td>Inyecta entidades XML externas para leer archivos del servidor</td>
+      <td><code>CRITICAL</code></td>
+    </tr>
+    <tr>
+      <td><b>SSRF</b></td>
+      <td>Prueba campos con IPs internas y metadata de cloud (169.254.169.254)</td>
+      <td><code>CRITICAL</code></td>
+    </tr>
+  </tbody>
+</table>
+
+### Autenticacion y sesion
+
+<table>
+  <thead>
+    <tr>
+      <th>Modulo</th>
+      <th>Descripcion</th>
+      <th>Severidad</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><b>JWT Security</b></td>
+      <td>Detecta alg:none bypass, tokens sin expiración, payload sensible y secretos HMAC débiles</td>
+      <td><code>CRITICAL</code></td>
+    </tr>
+    <tr>
+      <td><b>Rate Limiting</b></td>
+      <td>Burst de 15 requests a endpoints de auth/API — detecta ausencia de throttling</td>
+      <td><code>MEDIUM</code></td>
+    </tr>
+    <tr>
+      <td><b>CSRF</b></td>
+      <td>Detecta formularios sin token CSRF y configuracion insegura de cookies</td>
+      <td><code>HIGH</code></td>
+    </tr>
+  </tbody>
+</table>
+
+### Configuracion y exposicion
+
 <table>
   <thead>
     <tr>
@@ -103,14 +175,19 @@
       <td><code>CRITICAL</code></td>
     </tr>
     <tr>
-      <td><b>SQL Injection</b></td>
-      <td>Prueba formularios con 10 payloads reales contra inputs activos</td>
-      <td><code>CRITICAL</code></td>
+      <td><b>HTTP Methods</b></td>
+      <td>Detecta metodos peligrosos habilitados (PUT, DELETE, TRACE)</td>
+      <td><code>HIGH</code></td>
     </tr>
     <tr>
-      <td><b>XSS</b></td>
-      <td>Inyeccion de scripts en parametros GET y formularios POST</td>
+      <td><b>Mixed Content</b></td>
+      <td>Detecta recursos HTTP activos (script/iframe) y pasivos (img/link) en paginas HTTPS</td>
       <td><code>HIGH</code></td>
+    </tr>
+    <tr>
+      <td><b>CORS Advanced</b></td>
+      <td>Prueba origen arbitrario reflejado con y sin credenciales, y null origin</td>
+      <td><code>CRITICAL</code></td>
     </tr>
     <tr>
       <td><b>Directory Traversal</b></td>
@@ -118,23 +195,67 @@
       <td><code>HIGH</code></td>
     </tr>
     <tr>
-      <td><b>Tech Detection</b></td>
-      <td>Identifica frameworks, CMS, servidores y librerias JS</td>
-      <td><code>INFO</code></td>
+      <td><b>Sensitive Data Exposure</b></td>
+      <td>Escanea respuestas buscando API keys, tokens, private keys, passwords y strings de BD</td>
+      <td><code>CRITICAL</code></td>
     </tr>
     <tr>
-      <td><b>Port Scan</b></td>
-      <td>Escaneo de puertos comunes con deteccion de servicios</td>
+      <td><b>GraphQL</b></td>
+      <td>Detecta introspection habilitada, batch queries y field suggestions en endpoints GraphQL</td>
+      <td><code>MEDIUM</code></td>
+    </tr>
+  </tbody>
+</table>
+
+### Reconocimiento y descubrimiento
+
+<table>
+  <thead>
+    <tr>
+      <th>Modulo</th>
+      <th>Descripcion</th>
+      <th>Severidad</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><b>Parameter Fuzzing</b></td>
+      <td>Prueba 60+ parametros ocultos detectando cambios de status, tamaño y disclosure de errores</td>
       <td><code>MEDIUM</code></td>
     </tr>
     <tr>
-      <td><b>HTTP Methods</b></td>
-      <td>Detecta metodos peligrosos habilitados (PUT, DELETE, TRACE)</td>
+      <td><b>Open Redirect</b></td>
+      <td>Inyecta dominio externo en parametros de redireccion (url, next, return, goto, etc.)</td>
       <td><code>HIGH</code></td>
+    </tr>
+    <tr>
+      <td><b>Subdomain Enumeration</b></td>
+      <td>Wordlist de 80+ subdominios con deteccion de subdomain takeover en 8 servicios</td>
+      <td><code>CRITICAL</code></td>
+    </tr>
+    <tr>
+      <td><b>Broken Link Hijacking</b></td>
+      <td>Detecta dominios externos rotos o sin registrar en links del sitio</td>
+      <td><code>MEDIUM</code></td>
+    </tr>
+    <tr>
+      <td><b>Port Scan</b></td>
+      <td>Escaneo de puertos comunes con deteccion de servicios via nmap o sockets</td>
+      <td><code>MEDIUM</code></td>
     </tr>
     <tr>
       <td><b>Web Crawler</b></td>
       <td>Rastreo recursivo de URLs internas hasta profundidad configurable</td>
+      <td><code>INFO</code></td>
+    </tr>
+    <tr>
+      <td><b>Tech Detection</b></td>
+      <td>Identifica frameworks, CMS, servidores y librerias JS. Consulta NVD por CVEs</td>
+      <td><code>INFO</code></td>
+    </tr>
+    <tr>
+      <td><b>DNS / WHOIS</b></td>
+      <td>Recolecta registros A, MX, NS, TXT e informacion de registro del dominio</td>
       <td><code>INFO</code></td>
     </tr>
     <tr>
@@ -304,13 +425,20 @@ python3 scanner.py https://ejemplo.com --full --output reporte.txt
 ## Funcionalidades del dashboard
 
 - **Nuevo scan** — lanza el scanner desde el browser con progreso en tiempo real
-- **Historial** — todos los scans con filtros, busqueda y ordenamiento
+- **Historial** — todos los scans agrupados por dominio con sparkline de tendencia de score
 - **Reporte de seguridad** — findings organizados por severidad, score, graficos
+- **OWASP Top 10** — cobertura mapeada a las 10 categorias OWASP 2021 en cada reporte
 - **Comparacion** — compara dos scans del mismo objetivo para ver progreso
 - **Batch scan** — escanea multiples URLs en paralelo
 - **Export** — descarga reportes en PDF, CSV o JSON
 - **Notas en findings** — agrega estado de remediacion y notas por hallazgo
-- **Tech stack** — detecta y muestra tecnologias identificadas en el objetivo
+- **Tech stack + CVEs** — detecta tecnologias y consulta CVEs criticos en NVD
+- **Subdominios** — tabla de subdominios encontrados con riesgo de takeover
+- **Fuzzing results** — tabla de parametros ocultos que cambiaron el comportamiento
+- **Threat Intelligence** — enriquecimiento con VirusTotal y Shodan (API keys opcionales)
+- **SSL Monitor** — monitoreo programado de certificados con alertas por webhook y email
+- **Notificaciones** — webhooks y Slack al completar un scan o detectar hallazgos criticos
+- **Escaneos programados** — re-escaneo automatico diario, semanal o mensual
 
 ---
 
