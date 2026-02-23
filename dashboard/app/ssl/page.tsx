@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SSLMonitorCard } from "@/components/ssl-monitor-card";
-import { CompactCard, ListRow, MonitorTable } from "@/components/ssl-monitor-views";
+import { CompactCard, ListRow, ListHeader, MonitorTable } from "@/components/ssl-monitor-views";
 import { useI18n } from "@/lib/i18n/context";
 import { cn } from "@/lib/utils";
 import type { SSLMonitorRecord, SSLCheckResult } from "@/lib/types";
@@ -399,17 +399,8 @@ export default function SSLPage() {
           ))}
         </div>
       ) : viewMode === "list" ? (
-        <div className="space-y-2">
-          {/* List header */}
-          <div className="hidden md:grid text-xs text-muted-foreground px-4 gap-4" style={{ gridTemplateColumns: "11rem 5rem 9rem 6rem 1fr 5rem 8rem auto" }}>
-            <span>{t("ssl.domain")}</span>
-            <span>Status</span>
-            <span>{t("ssl.daysRemaining").replace("{n} ", "")}</span>
-            <span>{t("ssl.expires")}</span>
-            <span>{t("ssl.issuer")}</span>
-            <span>{t("ssl.protocol")}</span>
-            <span>{t("ssl.nextCheck")}</span>
-          </div>
+        <div className="space-y-1">
+          <ListHeader />
           {monitors.map((monitor) => (
             <ListRow
               key={monitor.id}

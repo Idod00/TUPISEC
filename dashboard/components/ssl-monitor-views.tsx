@@ -115,7 +115,28 @@ export function CompactCard({ monitor, onDelete, onCheckNow }: { monitor: SSLMon
 }
 
 // ─── LIST VIEW ────────────────────────────────────────────────────────
-// Horizontal rows with issuer, protocol, last check, actions
+
+// Shared grid template — used by both header and each row for pixel-perfect alignment
+export const LIST_COLS = "minmax(9rem,1.5fr) 5.5rem 10rem 6rem minmax(6rem,1fr) 5.5rem 11rem 6rem";
+
+export function ListHeader() {
+  const { t } = useI18n();
+  return (
+    <div
+      className="hidden md:grid items-center text-xs font-medium text-muted-foreground px-4 py-1.5 gap-3"
+      style={{ gridTemplateColumns: LIST_COLS }}
+    >
+      <span>{t("ssl.domain")}</span>
+      <span>Status</span>
+      <span>{t("ssl.daysRemaining").replace("{n} ", "")}</span>
+      <span>{t("ssl.expires")}</span>
+      <span>{t("ssl.issuer")}</span>
+      <span>{t("ssl.protocol")}</span>
+      <span>{t("ssl.nextCheck")}</span>
+      <span />
+    </div>
+  );
+}
 
 export function ListRow({ monitor, onDelete, onCheckNow, onUpdate, onEditRequest }: { monitor: SSLMonitorRecord; onEditRequest: (id: string) => void } & MonitorActions) {
   const { t } = useI18n();
@@ -140,9 +161,12 @@ export function ListRow({ monitor, onDelete, onCheckNow, onUpdate, onEditRequest
     : "border-l-border";
 
   return (
-    <div className={cn("flex items-center gap-4 px-4 py-3 rounded-lg border bg-card border-l-4 text-sm", leftBorder)}>
+    <div
+      className={cn("grid items-center gap-3 px-4 py-3 rounded-lg border bg-card border-l-4", leftBorder)}
+      style={{ gridTemplateColumns: LIST_COLS }}
+    >
       {/* Domain */}
-      <div className="flex items-center gap-2 w-44 flex-shrink-0">
+      <div className="flex items-center gap-2 min-w-0">
         <StatusDot status={status} />
         <div className="min-w-0">
           <p className="font-mono font-semibold text-xs truncate">{monitor.domain}</p>
@@ -151,12 +175,12 @@ export function ListRow({ monitor, onDelete, onCheckNow, onUpdate, onEditRequest
       </div>
 
       {/* Status badge */}
-      <div className="w-20 flex-shrink-0">
+      <div>
         <StatusBadge status={status} />
       </div>
 
       {/* Days + bar */}
-      <div className="w-36 flex-shrink-0">
+      <div>
         {days !== null ? (
           <>
             <p className={cn("text-xs mb-0.5", days < 0 ? "text-red-400" : days <= 14 ? "text-orange-400" : "text-muted-foreground")}>
@@ -172,27 +196,27 @@ export function ListRow({ monitor, onDelete, onCheckNow, onUpdate, onEditRequest
       </div>
 
       {/* Expires */}
-      <div className="w-24 flex-shrink-0 text-xs text-muted-foreground">
+      <div className="text-xs text-muted-foreground">
         {result?.valid_to ? new Date(result.valid_to).toLocaleDateString() : "—"}
       </div>
 
       {/* Issuer */}
-      <div className="flex-1 min-w-0 text-xs text-muted-foreground truncate">
+      <div className="text-xs text-muted-foreground truncate">
         {result?.issuer?.O ?? result?.issuer?.CN ?? "—"}
       </div>
 
       {/* Protocol */}
-      <div className="w-20 flex-shrink-0 text-xs font-mono text-muted-foreground">
+      <div className="text-xs font-mono text-muted-foreground">
         {result?.protocol ?? "—"}
       </div>
 
       {/* Last check */}
-      <div className="w-32 flex-shrink-0 text-xs text-muted-foreground">
+      <div className="text-xs text-muted-foreground">
         {monitor.last_check ? new Date(monitor.last_check).toLocaleString() : t("ssl.neverChecked")}
       </div>
 
       {/* Actions */}
-      <div className="flex gap-1 flex-shrink-0">
+      <div className="flex gap-1 justify-end">
         <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onEditRequest(monitor.id)}>
           <Pencil className="h-3 w-3" />
         </Button>
