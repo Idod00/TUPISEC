@@ -966,6 +966,22 @@ class TupiSecScanner:
             self.log("  [!] dnspython not available, skipping subdomain enumeration", Fore.YELLOW)
             return
 
+        # Detect wildcard DNS (e.g. *.tupisa.com.py → same IP for any subdomain)
+        import random as _random
+        import string as _string
+        wildcard_ips = set()
+        for _ in range(2):
+            probe = "wc-" + "".join(_random.choices(_string.ascii_lowercase + _string.digits, k=12))
+            try:
+                wc_ans = dns.resolver.resolve(f"{probe}.{apex}", "A", lifetime=3)
+                for r in wc_ans:
+                    wildcard_ips.add(r.to_text())
+            except Exception:
+                pass
+        if wildcard_ips:
+            self.log(f"  [!] Wildcard DNS detected → {', '.join(wildcard_ips)}", Fore.YELLOW)
+            self.log(f"      Subdomains resolving to these IPs will be filtered as false positives.", Fore.YELLOW)
+
         self.log(f"  Testing {len(wordlist)} candidates for {apex}...", Fore.CYAN)
 
         for sub in wordlist:
@@ -974,6 +990,10 @@ class TupiSecScanner:
                 answers = dns.resolver.resolve(fqdn, "A", lifetime=3)
                 ips = [r.to_text() for r in answers]
                 ip = ips[0] if ips else ""
+
+                # Skip wildcard matches — all IPs hit the catch-all record
+                if wildcard_ips and set(ips) <= wildcard_ips:
+                    continue
 
                 status_code = 0
                 takeover_risk = False
