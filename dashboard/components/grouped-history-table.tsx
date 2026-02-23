@@ -19,6 +19,7 @@ type ScanRow = Omit<ScanRecord, "report_json">;
 interface GroupedHistoryTableProps {
   scans: ScanRow[];
   onDelete: (id: string) => void;
+  onDeleteGroup?: (ids: string[]) => void;
 }
 
 function formatDate(iso: string, dateLocale: string) {
@@ -115,7 +116,7 @@ function ScoreSparkline({ scores }: { scores: (number | null)[] }) {
   );
 }
 
-export function GroupedHistoryTable({ scans, onDelete }: GroupedHistoryTableProps) {
+export function GroupedHistoryTable({ scans, onDelete, onDeleteGroup }: GroupedHistoryTableProps) {
   const router = useRouter();
   const { t, lang, dateLocale } = useI18n();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -254,6 +255,17 @@ export function GroupedHistoryTable({ scans, onDelete }: GroupedHistoryTableProp
                         )}
                         {t("grouped.retest")}
                       </Button>
+                      {onDeleteGroup && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs px-2 text-red-400 hover:text-red-300"
+                          onClick={() => onDeleteGroup(urlScans.map((s) => s.id))}
+                          title={t("grouped.deleteAll")}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

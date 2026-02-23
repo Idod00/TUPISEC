@@ -94,7 +94,7 @@ export interface ScheduleRecord {
   next_run: string | null;
 }
 
-export type FindingStatusValue = "open" | "in_progress" | "accepted" | "resolved";
+export type FindingStatusValue = "open" | "in_progress" | "accepted" | "resolved" | "false_positive";
 
 export interface FindingStatusRecord {
   id: number;

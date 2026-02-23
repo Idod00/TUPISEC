@@ -63,6 +63,7 @@ export function FindingsTable({ findings, statusMap, onStatusChange, scanId }: F
     in_progress: t("findingStatus.inProgress"),
     accepted: t("findingStatus.accepted"),
     resolved: t("findingStatus.resolved"),
+    false_positive: t("findingStatus.falsePositive"),
   };
 
   return (
@@ -97,7 +98,7 @@ export function FindingsTable({ findings, statusMap, onStatusChange, scanId }: F
 
       {statusMap && (
         <div className="flex flex-wrap gap-1">
-          {(["ALL", "open", "in_progress", "accepted", "resolved"] as const).map((s) => (
+          {(["ALL", "open", "in_progress", "accepted", "resolved", "false_positive"] as const).map((s) => (
             <Button
               key={s}
               variant="outline"

@@ -1680,7 +1680,159 @@ class TupiSecScanner:
         except Exception as e:
             self.log(f"  [!] Methods scan error: {e}", Fore.RED)
 
-    # ─── Module 24: NoSQL Injection ───────────────────────────────────
+    # ─── Module 24: CRLF Injection ────────────────────────────────────
+    def scan_crlf_injection(self):
+        self.log("\n[*] Testing for CRLF Injection...", Fore.GREEN)
+
+        PAYLOADS = [
+            "%0d%0aX-Injected: tupisec-crlf",
+            "%0aX-Injected: tupisec-crlf",
+            "%0d%0aSet-Cookie: tupisec=crlf",
+        ]
+
+        found = False
+
+        for url in list(self.discovered_urls)[:25]:
+            parsed = urllib.parse.urlparse(url)
+            params = urllib.parse.parse_qs(parsed.query)
+            if not params:
+                continue
+            for param in list(params.keys())[:3]:
+                for payload in PAYLOADS:
+                    flat = {k: v[0] for k, v in params.items()}
+                    flat[param] = payload
+                    try:
+                        resp = self.session.get(
+                            parsed._replace(query="").geturl(),
+                            params=flat, timeout=TIMEOUT, allow_redirects=False
+                        )
+                        if "x-injected" in [h.lower() for h in resp.headers]:
+                            self.add_finding("HIGH", "CRLF Injection",
+                                f"CRLF injection in parameter '{param}'",
+                                f"Injected header 'X-Injected' reflected in response for {url}.",
+                                "Sanitize \\r\\n characters from user input before including in HTTP responses.")
+                            found = True
+                            break
+                        if "tupisec=crlf" in resp.headers.get("set-cookie", ""):
+                            self.add_finding("HIGH", "CRLF Injection",
+                                f"CRLF cookie injection in parameter '{param}'",
+                                f"Injected Set-Cookie header reflected for {url}.",
+                                "Sanitize \\r\\n characters from all user-controlled inputs.")
+                            found = True
+                            break
+                    except:
+                        pass
+                if found:
+                    break
+
+        if not found:
+            self.log("  No CRLF injection found.", Fore.YELLOW)
+
+    # ─── Module 25: Prototype Pollution ───────────────────────────────
+    def scan_prototype_pollution(self):
+        self.log("\n[*] Testing for Prototype Pollution...", Fore.GREEN)
+
+        POLLUTION_KEYS = [
+            ("__proto__[tupisec_test]", "polluted_tupisec"),
+            ("constructor[prototype][tupisec_test]", "polluted_tupisec"),
+            ("__proto__.tupisec_test", "polluted_tupisec"),
+        ]
+        ERROR_HINTS = ["prototype", "__proto__", "constructor", "cannot set property",
+                       "has no method", "is not a function", "cannot read prop"]
+
+        found = False
+
+        for url in list(self.discovered_urls)[:20]:
+            parsed = urllib.parse.urlparse(url)
+            params = urllib.parse.parse_qs(parsed.query)
+
+            for key, value in POLLUTION_KEYS:
+                flat = {k: v[0] for k, v in params.items()} if params else {}
+                flat[key] = value
+                try:
+                    resp = self.session.get(
+                        parsed._replace(query="").geturl() if params else url,
+                        params=flat, timeout=TIMEOUT
+                    )
+                    if value in resp.text:
+                        self.add_finding("HIGH", "Prototype Pollution",
+                            f"Potential prototype pollution via '{key}'",
+                            f"Injected value reflected in response for {url}.",
+                            "Sanitize object keys; use Object.create(null) for untrusted data; validate input keys server-side.")
+                        found = True
+                        break
+                    if resp.status_code == 500:
+                        for hint in ERROR_HINTS:
+                            if hint in resp.text.lower():
+                                self.add_finding("MEDIUM", "Prototype Pollution",
+                                    f"Server error triggered by prototype key '{key}'",
+                                    f"500 error mentioning '{hint}' for {url}.",
+                                    "Sanitize object keys and validate input before assigning to objects.")
+                                found = True
+                                break
+                except:
+                    pass
+                if found:
+                    break
+            if found:
+                break
+
+        if not found:
+            self.log("  No prototype pollution found.", Fore.YELLOW)
+
+    # ─── Module 26: S3 Bucket Misconfiguration ────────────────────────
+    def scan_s3_buckets(self):
+        self.log("\n[*] Testing for S3 bucket misconfiguration...", Fore.GREEN)
+
+        domain_parts = self.parsed.netloc.replace("www.", "").split(".")
+        base_name = domain_parts[0]
+        apex = ".".join(domain_parts[-2:]) if len(domain_parts) >= 2 else domain_parts[0]
+
+        candidates = {
+            base_name,
+            apex.replace(".", "-"),
+            f"{base_name}-static", f"{base_name}-assets", f"{base_name}-uploads",
+            f"{base_name}-backup", f"{base_name}-prod", f"{base_name}-dev",
+            f"{base_name}-media", f"{base_name}-files",
+        }
+
+        for sub in getattr(self, "subdomains", []):
+            sub_name = sub.get("subdomain", "").split(".")[0]
+            if any(p in sub_name for p in ("static", "assets", "media", "cdn", "files", "uploads")):
+                candidates.add(sub_name)
+
+        patterns = [
+            "https://{bucket}.s3.amazonaws.com/",
+            "https://s3.amazonaws.com/{bucket}/",
+        ]
+
+        found = False
+        for bucket in candidates:
+            for pattern in patterns:
+                test_url = pattern.format(bucket=bucket)
+                try:
+                    resp = self.session.get(test_url, timeout=8)
+                    if resp.status_code == 200 and "ListBucketResult" in resp.text:
+                        self.add_finding("CRITICAL", "Cloud Misconfiguration",
+                            f"Public S3 bucket listing: {bucket}",
+                            f"Bucket {test_url} is public and lists its contents.",
+                            "Set bucket ACL to private; enable S3 Block Public Access.")
+                        found = True
+                        break
+                    elif resp.status_code == 403:
+                        self.add_finding("INFO", "Cloud Misconfiguration",
+                            f"S3 bucket exists (access denied): {bucket}",
+                            f"Bucket {test_url} exists — guessable from domain name.",
+                            "Use non-guessable bucket names to prevent enumeration.")
+                        found = True
+                        break
+                except:
+                    pass
+
+        if not found:
+            self.log("  No exposed S3 buckets found.", Fore.YELLOW)
+
+    # ─── Module 27: NoSQL Injection ───────────────────────────────────
     def scan_nosql_injection(self):
         self.log("\n[*] Testing for NoSQL Injection...", Fore.GREEN)
 
@@ -2098,9 +2250,12 @@ class TupiSecScanner:
             ("graphql",          "Testing GraphQL endpoints",       lambda: self.scan_graphql()),
             ("xxe",              "Testing for XXE",                 lambda: self.scan_xxe()),
             ("broken_links",     "Checking broken external links",  lambda: self.scan_broken_links()),
-            ("nosql",            "Testing for NoSQL injection",     lambda: self.scan_nosql_injection()),
-            ("cmd_injection",    "Testing for command injection",   lambda: self.scan_cmd_injection()),
-            ("default_creds",    "Testing for default credentials", lambda: self.scan_default_creds()),
+            ("nosql",            "Testing for NoSQL injection",       lambda: self.scan_nosql_injection()),
+            ("cmd_injection",    "Testing for command injection",     lambda: self.scan_cmd_injection()),
+            ("default_creds",    "Testing for default credentials",   lambda: self.scan_default_creds()),
+            ("crlf",             "Testing for CRLF injection",        lambda: self.scan_crlf_injection()),
+            ("prototype",        "Testing for prototype pollution",   lambda: self.scan_prototype_pollution()),
+            ("s3_buckets",       "Testing for S3 misconfiguration",  lambda: self.scan_s3_buckets()),
         ]
 
         total = len(phases)

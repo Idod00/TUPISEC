@@ -20,6 +20,7 @@ const statusColors: Record<FindingStatusValue, string> = {
   in_progress: "text-yellow-400",
   accepted: "text-blue-400",
   resolved: "text-green-400",
+  false_positive: "text-muted-foreground",
 };
 
 export function FindingStatusBadge({ status, onChange }: FindingStatusBadgeProps) {
@@ -30,6 +31,7 @@ export function FindingStatusBadge({ status, onChange }: FindingStatusBadgeProps
     in_progress: t("findingStatus.inProgress"),
     accepted: t("findingStatus.accepted"),
     resolved: t("findingStatus.resolved"),
+    false_positive: t("findingStatus.falsePositive"),
   };
 
   return (

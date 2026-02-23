@@ -120,6 +120,7 @@ export const translations = {
     "findingStatus.inProgress": "In Progress",
     "findingStatus.accepted": "Accepted",
     "findingStatus.resolved": "Resolved",
+    "findingStatus.falsePositive": "False Positive",
 
     // Findings table
     "findingsTable.search": "Search findings...",
@@ -147,6 +148,7 @@ export const translations = {
     "grouped.actions": "Actions",
     "grouped.view": "View",
     "grouped.retest": "Re-test",
+    "grouped.deleteAll": "Delete all scans for this target",
     "grouped.date": "Date",
     "grouped.status": "Status",
 
@@ -388,6 +390,7 @@ export const translations = {
     "findingStatus.inProgress": "En Progreso",
     "findingStatus.accepted": "Aceptado",
     "findingStatus.resolved": "Resuelto",
+    "findingStatus.falsePositive": "Falso Positivo",
 
     // Findings table
     "findingsTable.search": "Buscar hallazgos...",
@@ -415,6 +418,7 @@ export const translations = {
     "grouped.actions": "Acciones",
     "grouped.view": "Ver",
     "grouped.retest": "Re-escanear",
+    "grouped.deleteAll": "Eliminar todos los scans de este objetivo",
     "grouped.date": "Fecha",
     "grouped.status": "Estado",
 
