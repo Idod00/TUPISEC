@@ -12,6 +12,8 @@ const SEVERITY_COLORS: Record<Severity, string> = {
   INFO: "#3b82f6",
 };
 
+const SEVERITY_ORDER: Severity[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
+
 interface SummaryChartsProps {
   summary: Record<string, number>;
   findings: Finding[];
@@ -22,15 +24,27 @@ export function SummaryCharts({ summary, findings }: SummaryChartsProps) {
     .map((s) => ({ name: s, value: summary[s] || 0, color: SEVERITY_COLORS[s] }))
     .filter((d) => d.value > 0);
 
-  // Group findings by category
+  // Group findings by category and track worst severity per category
   const catMap: Record<string, number> = {};
+  const catWorstSeverity: Record<string, Severity> = {};
   for (const f of findings) {
     catMap[f.category] = (catMap[f.category] || 0) + 1;
+    const sv = f.severity as Severity;
+    if (!catWorstSeverity[f.category] || SEVERITY_ORDER.indexOf(sv) < SEVERITY_ORDER.indexOf(catWorstSeverity[f.category])) {
+      catWorstSeverity[f.category] = sv;
+    }
   }
   const categoryData = Object.entries(catMap)
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 8);
+
+  const tooltipStyle = {
+    backgroundColor: "var(--card)",
+    borderColor: "var(--border)",
+    borderRadius: "8px",
+    color: "var(--foreground)",
+  };
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -58,14 +72,7 @@ export function SummaryCharts({ summary, findings }: SummaryChartsProps) {
                     <Cell key={entry.name} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    borderColor: "hsl(var(--border))",
-                    borderRadius: "8px",
-                    color: "hsl(var(--foreground))",
-                  }}
-                />
+                <Tooltip contentStyle={tooltipStyle} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -90,22 +97,22 @@ export function SummaryCharts({ summary, findings }: SummaryChartsProps) {
         <CardContent>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={categoryData} layout="vertical" margin={{ left: 10, right: 10 }}>
-              <XAxis type="number" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+              <XAxis type="number" tick={{ fill: "var(--muted-foreground)", fontSize: 12 }} />
               <YAxis
                 type="category"
                 dataKey="name"
                 width={130}
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
               />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "hsl(var(--card))",
-                  borderColor: "hsl(var(--border))",
-                  borderRadius: "8px",
-                  color: "hsl(var(--foreground))",
-                }}
-              />
-              <Bar dataKey="count" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+              <Tooltip contentStyle={tooltipStyle} />
+              <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                {categoryData.map((entry) => (
+                  <Cell
+                    key={entry.name}
+                    fill={SEVERITY_COLORS[catWorstSeverity[entry.name] || "INFO"]}
+                  />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </CardContent>

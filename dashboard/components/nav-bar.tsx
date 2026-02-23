@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Shield, History, Home, Layers, Clock, Settings2, LockKeyhole } from "lucide-react";
+import { Shield, History, Home, Layers, Clock, Settings2, LockKeyhole, Sun, Moon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/context";
+import { useTheme } from "@/lib/theme/context";
 import type { TranslationKey } from "@/lib/i18n/translations";
 
 const links: { href: string; key: TranslationKey; icon: React.ElementType }[] = [
@@ -19,6 +20,7 @@ const links: { href: string; key: TranslationKey; icon: React.ElementType }[] = 
 export function NavBar() {
   const pathname = usePathname();
   const { lang, setLang, t } = useI18n();
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-md">
@@ -76,6 +78,15 @@ export function NavBar() {
             EN
           </button>
         </div>
+
+        {/* Theme toggle */}
+        <button
+          onClick={toggleTheme}
+          aria-label="Toggle theme"
+          className="flex items-center justify-center rounded-md border border-border/60 p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+        </button>
       </div>
     </header>
   );
