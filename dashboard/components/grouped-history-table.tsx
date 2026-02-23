@@ -75,6 +75,46 @@ function DeltaCell({ delta }: { delta: number | null }) {
   );
 }
 
+function ScoreSparkline({ scores }: { scores: (number | null)[] }) {
+  const valid = (scores.filter((s) => s != null) as number[]).slice(0, 10).reverse();
+  if (valid.length < 2) return <DeltaCell delta={null} />;
+
+  const W = 72, H = 22, PAD = 2;
+  const min = Math.min(...valid);
+  const max = Math.max(...valid);
+  const range = max - min || 1;
+
+  const pts = valid
+    .map((s, i) => {
+      const x = PAD + (i / (valid.length - 1)) * (W - PAD * 2);
+      const y = PAD + ((max - s) / range) * (H - PAD * 2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+
+  const newest = valid[valid.length - 1];
+  const oldest = valid[0];
+  const color = newest < oldest ? "#4ade80" : newest > oldest ? "#f87171" : "#94a3b8";
+  const delta = newest - oldest;
+
+  return (
+    <div className="inline-flex flex-col items-center gap-0.5">
+      <svg width={W} height={H}>
+        <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5"
+          strokeLinecap="round" strokeLinejoin="round" />
+        {valid.map((s, i) => {
+          const x = PAD + (i / (valid.length - 1)) * (W - PAD * 2);
+          const y = PAD + ((max - s) / range) * (H - PAD * 2);
+          return <circle key={i} cx={x} cy={y} r="1.8" fill={color} />;
+        })}
+      </svg>
+      <span className="text-[10px]" style={{ color }}>
+        {delta > 0 ? `+${delta}` : delta}
+      </span>
+    </div>
+  );
+}
+
 export function GroupedHistoryTable({ scans, onDelete }: GroupedHistoryTableProps) {
   const router = useRouter();
   const { t, lang, dateLocale } = useI18n();
@@ -181,7 +221,7 @@ export function GroupedHistoryTable({ scans, onDelete }: GroupedHistoryTableProp
                     <ScoreCell scan={latest} />
                   </TableCell>
                   <TableCell className="text-center">
-                    <DeltaCell delta={delta} />
+                    <ScoreSparkline scores={urlScans.map((s) => s.risk_score ?? null)} />
                   </TableCell>
                   <TableCell className="text-center text-sm text-muted-foreground">
                     {urlScans.length}

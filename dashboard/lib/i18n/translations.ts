@@ -228,6 +228,13 @@ export const translations = {
     "settings.notifications": "Notifications",
     "settings.notificationsDesc": "Receive alerts when scans complete or critical findings are detected.",
 
+    // OWASP Coverage
+    "owasp.title": "OWASP Top 10 Coverage",
+    "owasp.subtitle": "Findings mapped to the OWASP Top 10 2021 categories",
+    "owasp.affected": "affected",
+    "owasp.clean": "No issues detected",
+    "owasp.notCovered": "Not covered by current modules",
+
     // Subdomains
     "subdomains.title": "Subdomains Found",
     "subdomains.subdomain": "Subdomain",
@@ -488,6 +495,13 @@ export const translations = {
     "settings.configured": "Configurado",
     "settings.notifications": "Notificaciones",
     "settings.notificationsDesc": "Recibí alertas cuando los escaneos completen o se detecten hallazgos críticos.",
+
+    // OWASP Coverage
+    "owasp.title": "Cobertura OWASP Top 10",
+    "owasp.subtitle": "Hallazgos mapeados a las categorías OWASP Top 10 2021",
+    "owasp.affected": "afectadas",
+    "owasp.clean": "Sin problemas detectados",
+    "owasp.notCovered": "No cubierto por los módulos actuales",
 
     // Subdomains
     "subdomains.title": "Subdominios Encontrados",

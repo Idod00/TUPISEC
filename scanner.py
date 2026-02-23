@@ -126,6 +126,8 @@ class TupiSecScanner:
         self.subdomains = []
         self.open_redirect_results = []
         self.fuzz_results = []
+        self.sensitive_findings = []
+        self.broken_links = []
         if cookies:
             for pair in cookies.split(";"):
                 pair = pair.strip()
@@ -1150,6 +1152,452 @@ class TupiSecScanner:
 
         self.log(f"  Found {len(self.fuzz_results)} interesting parameters", Fore.CYAN)
 
+    # ─── Module 17: Sensitive Data Exposure ───────────────────────────
+    def scan_sensitive_data(self):
+        self.log("\n[*] Scanning for sensitive data exposure...", Fore.GREEN)
+        self.sensitive_findings = []
+
+        PATTERNS = [
+            ("AWS Access Key",        r"AKIA[0-9A-Z]{16}",                                                    "CRITICAL"),
+            ("Private Key",           r"-----BEGIN\s+(?:RSA\s+|EC\s+|DSA\s+|OPENSSH\s+)?PRIVATE KEY-----",   "CRITICAL"),
+            ("DB Connection String",  r"(?i)(?:mysql|postgresql|postgres|mongodb|redis):\/\/[^:]+:[^@\s]+@",  "CRITICAL"),
+            ("Google API Key",        r"AIza[0-9A-Za-z_\-]{35}",                                              "HIGH"),
+            ("Slack Token",           r"xox[baprs]-[0-9a-zA-Z\-]{10,}",                                       "HIGH"),
+            ("Bearer Token",          r"Bearer\s+[a-zA-Z0-9_\-\.]{20,}",                                      "HIGH"),
+            ("API Key in source",     r"(?i)(?:api[_\-]?key|apikey)\s*[:=]\s*['\"][a-zA-Z0-9_\-]{20,}['\"]", "HIGH"),
+            ("Hardcoded Password",    r"(?i)(?:password|passwd|pwd)\s*[:=]\s*['\"][^'\"]{6,}['\"]",           "HIGH"),
+            ("JWT Token",             r"eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]*",                  "MEDIUM"),
+            ("Internal IP",           r"(?<!\d)(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})(?!\d)", "MEDIUM"),
+            ("Email Address",         r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}",                   "INFO"),
+        ]
+
+        urls_to_scan = [self.target_url] + list(self.discovered_urls)[:15]
+        reported = set()
+
+        for url in urls_to_scan:
+            try:
+                resp = self.session.get(url, timeout=TIMEOUT, allow_redirects=True)
+                body = resp.text
+                for name, pattern, severity in PATTERNS:
+                    matches = re.findall(pattern, body)
+                    if not matches:
+                        continue
+                    key = (url, name)
+                    if key in reported:
+                        continue
+                    reported.add(key)
+                    sample = str(matches[0])
+                    if severity in ("CRITICAL", "HIGH") and len(sample) > 12:
+                        sample = sample[:6] + "***" + sample[-4:]
+                    self.sensitive_findings.append({"url": url, "type": name, "severity": severity})
+                    self.add_finding(
+                        severity, "Sensitive Data Exposure",
+                        f"{name} found in response",
+                        f"URL: {url}\nPattern: {name}\nSample: {sample}",
+                        "Remove sensitive data from client-facing responses. "
+                        "Use environment variables and secrets managers for credentials."
+                    )
+            except Exception:
+                pass
+
+        self.log(f"  Found {len(self.sensitive_findings)} sensitive data issues", Fore.CYAN)
+
+    # ─── Module 18: JWT Security Testing ──────────────────────────────
+    def scan_jwt(self):
+        self.log("\n[*] Testing JWT security...", Fore.GREEN)
+        import base64
+        import hmac
+        import hashlib
+
+        jwt_re = re.compile(r"eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]*")
+
+        def b64_decode(s):
+            s += "=" * (4 - len(s) % 4)
+            try:
+                return json.loads(base64.urlsafe_b64decode(s))
+            except Exception:
+                return {}
+
+        jwts_found = []
+        try:
+            resp = self.session.get(self.target_url, timeout=TIMEOUT)
+            for cookie in self.session.cookies:
+                m = jwt_re.search(cookie.value)
+                if m:
+                    jwts_found.append((f"cookie:{cookie.name}", m.group()))
+            for m in jwt_re.finditer(resp.text):
+                jwts_found.append(("body", m.group()))
+            for h, v in resp.headers.items():
+                m = jwt_re.search(v)
+                if m:
+                    jwts_found.append((f"header:{h}", m.group()))
+        except Exception:
+            pass
+
+        if not jwts_found:
+            self.log("  No JWTs found.", Fore.CYAN)
+            return
+
+        self.log(f"  Found {len(jwts_found)} JWT(s)", Fore.CYAN)
+
+        for source, token in jwts_found[:3]:
+            parts = token.split(".")
+            if len(parts) != 3:
+                continue
+            header  = b64_decode(parts[0])
+            payload = b64_decode(parts[1])
+            alg = header.get("alg", "unknown")
+            self.log(f"  JWT ({source}): alg={alg}", Fore.CYAN)
+
+            if alg.lower() in ("none", ""):
+                self.add_finding(
+                    "CRITICAL", "JWT Security",
+                    "JWT uses 'alg:none' — no signature verification",
+                    f"Source: {source}\nHeader: {header}\n"
+                    "Server may accept forged unsigned tokens.",
+                    "Reject tokens with alg=none. Whitelist accepted algorithms server-side."
+                )
+
+            if "exp" not in payload:
+                self.add_finding(
+                    "MEDIUM", "JWT Security",
+                    "JWT has no expiration (exp) claim",
+                    f"Source: {source}\nPayload keys: {list(payload.keys())}\n"
+                    "Tokens without 'exp' never expire — stolen tokens are valid forever.",
+                    "Always include an 'exp' claim and validate it server-side."
+                )
+
+            sensitive_keys = {"password", "passwd", "secret", "private_key", "ssn", "credit_card"}
+            exposed = [k for k in payload if k.lower() in sensitive_keys]
+            if exposed:
+                self.add_finding(
+                    "HIGH", "JWT Security",
+                    f"Sensitive fields in JWT payload: {', '.join(exposed)}",
+                    f"Source: {source}\nJWT payloads are base64-encoded, NOT encrypted.\n"
+                    "Anyone who obtains the token can read the payload.",
+                    "Never store sensitive data in JWT payload. Use opaque session IDs instead."
+                )
+
+            # Test alg:none bypass
+            if alg.lower() not in ("none", "") and parts[2]:
+                try:
+                    none_hdr = base64.urlsafe_b64encode(
+                        json.dumps({"alg": "none", "typ": "JWT"}).encode()
+                    ).rstrip(b"=").decode()
+                    none_token = f"{none_hdr}.{parts[1]}."
+                    base_resp = self.session.get(self.target_url, timeout=8)
+                    test_resp = self.session.get(
+                        self.target_url,
+                        headers={"Authorization": f"Bearer {none_token}"},
+                        timeout=8,
+                    )
+                    if test_resp.status_code == 200 and base_resp.status_code not in (200,):
+                        self.add_finding(
+                            "CRITICAL", "JWT Security",
+                            "Server accepts unsigned JWT (alg:none bypass)",
+                            f"Source: {source}\nModified token with alg:none was accepted.",
+                            "Whitelist accepted algorithms. Never allow alg:none."
+                        )
+                except Exception:
+                    pass
+
+            # Weak HMAC secret brute-force
+            if alg == "HS256":
+                weak_secrets = [
+                    "secret", "password", "123456", "admin", "key", "test",
+                    "changeme", "", "jwt_secret", "your-256-bit-secret",
+                ]
+                signing_input = f"{parts[0]}.{parts[1]}".encode()
+                for secret in weak_secrets:
+                    try:
+                        sig = base64.urlsafe_b64encode(
+                            hmac.new(secret.encode(), signing_input, hashlib.sha256).digest()
+                        ).rstrip(b"=").decode()
+                        if sig == parts[2]:
+                            self.add_finding(
+                                "CRITICAL", "JWT Security",
+                                f"JWT signed with weak secret: '{secret}'",
+                                f"Source: {source}\nHMAC-SHA256 signature matches '{secret}'.\n"
+                                "An attacker can forge arbitrary tokens.",
+                                "Use a cryptographically random secret of at least 256 bits."
+                            )
+                            break
+                    except Exception:
+                        pass
+
+    # ─── Module 19: Rate Limiting Detection ───────────────────────────
+    def scan_rate_limit(self):
+        self.log("\n[*] Testing rate limiting...", Fore.GREEN)
+        import concurrent.futures
+
+        BURST = 15
+        endpoints = []
+
+        for form in self.discovered_forms:
+            fields = form.get("fields", {})
+            has_pwd = any(f.get("type") == "password" for f in fields.values())
+            has_user = any(k.lower() in ("user", "username", "email", "login") for k in fields)
+            if has_pwd or has_user:
+                action = form.get("action") or self.target_url
+                if not action.startswith("http"):
+                    action = urllib.parse.urljoin(self.target_url, action)
+                endpoints.append((action, form.get("method", "GET").upper(), fields))
+
+        for url in self.discovered_urls:
+            if any(x in url for x in ("/login", "/auth", "/api/", "/signin", "/token")):
+                endpoints.append((url, "GET", {}))
+
+        if not endpoints:
+            self.log("  No auth/API endpoints found to test.", Fore.CYAN)
+            return
+
+        for url, method, fields in endpoints[:3]:
+            self.log(f"  Burst-testing: {url}", Fore.CYAN)
+            test_data = {k: v.get("value", "test") for k, v in fields.items()} if fields else {}
+
+            def fire(_):
+                try:
+                    if method == "POST":
+                        r = self.session.post(url, data=test_data, timeout=5, allow_redirects=False)
+                    else:
+                        r = self.session.get(url, timeout=5, allow_redirects=False)
+                    return r.status_code
+                except Exception:
+                    return 0
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+                codes = list(ex.map(fire, range(BURST)))
+
+            throttled = sum(1 for c in codes if c == 429)
+            if throttled == 0:
+                path = urllib.parse.urlparse(url).path or "/"
+                self.add_finding(
+                    "MEDIUM", "Rate Limiting",
+                    f"No rate limiting on {path}",
+                    f"Sent {BURST} rapid requests — no 429 responses.\n"
+                    f"Responses: {sorted(set(c for c in codes if c))}\n"
+                    "Endpoint may be vulnerable to brute force / credential stuffing.",
+                    "Implement request rate limiting (nginx limit_req, fail2ban, or app-level throttling)."
+                )
+            else:
+                self.log(f"  Rate limiting active ({throttled}/{BURST} throttled)", Fore.GREEN)
+
+    # ─── Module 20: Mixed Content Detection ───────────────────────────
+    def scan_mixed_content(self):
+        self.log("\n[*] Detecting mixed content...", Fore.GREEN)
+        if self.parsed.scheme != "https":
+            self.log("  Site is HTTP — mixed content check N/A.", Fore.YELLOW)
+            return
+
+        ACTIVE_TAGS  = {"script": "src", "iframe": "src", "object": "data", "embed": "src"}
+        PASSIVE_TAGS = {"img": "src", "audio": "src", "video": "src",
+                        "source": "src", "link": "href"}
+        reported = set()
+
+        for url in [self.target_url] + list(self.discovered_urls)[:10]:
+            if not url.startswith("https"):
+                continue
+            try:
+                resp = self.session.get(url, timeout=TIMEOUT, allow_redirects=True)
+                soup = BeautifulSoup(resp.text, "html.parser")
+
+                for tag_name, attr in ACTIVE_TAGS.items():
+                    for tag in soup.find_all(tag_name):
+                        src = tag.get(attr, "")
+                        if src.startswith("http://") and (url, src) not in reported:
+                            reported.add((url, src))
+                            self.add_finding(
+                                "HIGH", "Mixed Content",
+                                f"Active mixed content: <{tag_name}> loaded over HTTP",
+                                f"Page: {url}\nResource: {src}",
+                                "Change all resource URLs to HTTPS or use protocol-relative URLs (//)."
+                            )
+
+                for tag_name, attr in PASSIVE_TAGS.items():
+                    for tag in soup.find_all(tag_name):
+                        src = tag.get(attr, "")
+                        if src.startswith("http://") and (url, src) not in reported:
+                            reported.add((url, src))
+                            self.add_finding(
+                                "MEDIUM", "Mixed Content",
+                                f"Passive mixed content: <{tag_name}> loaded over HTTP",
+                                f"Page: {url}\nResource: {src}",
+                                "Change all resource URLs to HTTPS."
+                            )
+
+                for style in soup.find_all("style"):
+                    if style.string and "http://" in style.string:
+                        key = (url, "inline-style")
+                        if key not in reported:
+                            reported.add(key)
+                            self.add_finding(
+                                "MEDIUM", "Mixed Content",
+                                "Mixed content in inline CSS",
+                                f"Page: {url}\nInline <style> contains http:// URLs.",
+                                "Update CSS url() references to use HTTPS."
+                            )
+            except Exception:
+                pass
+
+    # ─── Module 21: GraphQL Introspection ─────────────────────────────
+    def scan_graphql(self):
+        self.log("\n[*] Testing for GraphQL endpoints...", Fore.GREEN)
+        PATHS = [
+            "graphql", "api/graphql", "v1/graphql", "v2/graphql",
+            "query", "gql", "graphiql", "playground",
+            "graphql/console", "api/query",
+        ]
+        INTROSPECT = json.dumps({"query": "{ __schema { types { name } } }"})
+        BATCH      = json.dumps([
+            {"query": "{ __schema { types { name } } }"},
+            {"query": "{ __schema { types { name } } }"},
+        ])
+        HDR = {"Content-Type": "application/json", "Accept": "application/json"}
+
+        for path in PATHS:
+            url = f"{self.base_url}/{path}"
+            try:
+                resp = self.session.post(url, data=INTROSPECT, headers=HDR, timeout=8)
+                if resp.status_code not in (200, 400):
+                    continue
+                try:
+                    data = resp.json()
+                except Exception:
+                    continue
+
+                if "data" in data and "__schema" in str(data.get("data", {})):
+                    types = data["data"].get("__schema", {}).get("types", [])
+                    user_types = [t["name"] for t in types
+                                  if t.get("name") and not t["name"].startswith("__")]
+                    self.add_finding(
+                        "MEDIUM", "GraphQL",
+                        f"GraphQL introspection enabled: /{path}",
+                        f"Returned {len(types)} types — exposes full API schema.\n"
+                        f"Sample types: {', '.join(user_types[:10])}",
+                        "Disable introspection in production. Use allowlist-based schema instead."
+                    )
+                    # Test batching
+                    try:
+                        br = self.session.post(url, data=BATCH, headers=HDR, timeout=8)
+                        if br.status_code == 200 and isinstance(br.json(), list):
+                            self.add_finding(
+                                "LOW", "GraphQL",
+                                "GraphQL batch queries enabled",
+                                f"URL: {url}\nBatching can amplify data extraction.",
+                                "Limit or disable query batching in production."
+                            )
+                    except Exception:
+                        pass
+                    break
+
+                # Field suggestions leak (Apollo / graphql-js)
+                if "errors" in data and "did you mean" in str(data["errors"]).lower():
+                    self.add_finding(
+                        "LOW", "GraphQL",
+                        "GraphQL field suggestions enabled",
+                        f"URL: {url}\nServer reveals valid field names in error messages.",
+                        "Disable field suggestions (Apollo: fieldSuggestionsPlugin)."
+                    )
+            except Exception:
+                pass
+
+    # ─── Module 22: XXE Testing ────────────────────────────────────────
+    def scan_xxe(self):
+        self.log("\n[*] Testing for XML External Entity (XXE)...", Fore.GREEN)
+        PAYLOADS = [
+            ('<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>'
+             '<root>&xxe;</root>'),
+            ('<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/hosts">]>'
+             '<root>&xxe;</root>'),
+        ]
+        INDICATORS = ["root:x:", "root:*:", "/bin/bash", "/sbin/nologin", "127.0.0.1\t"]
+        XML_HDR    = {"Content-Type": "application/xml"}
+
+        candidates = [u for u in [self.target_url] + list(self.discovered_urls)[:20]
+                      if any(x in urllib.parse.urlparse(u).path.lower()
+                             for x in ["xml", "soap", "rpc", "upload", "import", "parse", "api"])]
+        candidates.append(self.target_url)
+        candidates = list(dict.fromkeys(candidates))[:8]
+
+        for url in candidates:
+            for payload in PAYLOADS:
+                try:
+                    resp = self.session.post(url, data=payload, headers=XML_HDR, timeout=8)
+                    for indicator in INDICATORS:
+                        if indicator in resp.text:
+                            self.add_finding(
+                                "CRITICAL", "XXE",
+                                "XML External Entity — local file read",
+                                f"URL: {url}\nIndicator in response: '{indicator}'",
+                                "Disable external entity processing in XML parser. "
+                                "Use FEATURE_SECURE_PROCESSING or disable DOCTYPE declarations."
+                            )
+                            return
+                except Exception:
+                    pass
+
+    # ─── Module 23: Broken Link Hijacking ─────────────────────────────
+    def scan_broken_links(self):
+        self.log("\n[*] Checking for broken external links...", Fore.GREEN)
+        self.broken_links = []
+
+        external = {}
+        for page_url in [self.target_url] + list(self.discovered_urls)[:10]:
+            try:
+                resp = self.session.get(page_url, timeout=TIMEOUT, allow_redirects=True)
+                soup = BeautifulSoup(resp.text, "html.parser")
+                for tag in soup.find_all(["a", "script", "link", "iframe"]):
+                    href = tag.get("href") or tag.get("src") or ""
+                    if href.startswith("http") and self.parsed.netloc not in href:
+                        domain = urllib.parse.urlparse(href).netloc
+                        if domain:
+                            external[href] = domain
+            except Exception:
+                pass
+
+        if not external:
+            self.log("  No external links found.", Fore.CYAN)
+            return
+
+        self.log(f"  Checking {min(len(external), 30)} external links...", Fore.CYAN)
+        checked_domains = set()
+
+        for link, domain in list(external.items())[:30]:
+            if domain in checked_domains:
+                continue
+            checked_domains.add(domain)
+            try:
+                r = self.session.get(link, timeout=6, allow_redirects=True)
+                if r.status_code in (404, 410):
+                    try:
+                        socket.gethostbyname(domain)
+                        sev, note = "LOW", "returns 404/410 — dead link"
+                    except socket.gaierror:
+                        sev, note = "MEDIUM", "domain does not resolve — potentially registerable"
+                    self.broken_links.append({"url": link, "domain": domain})
+                    self.add_finding(
+                        sev, "Broken Link Hijacking",
+                        f"Dead external link: {domain}",
+                        f"Link: {link}\n{note.capitalize()}.\n"
+                        "An attacker could register this domain and serve malicious content.",
+                        "Remove or update all dead external links."
+                    )
+            except requests.exceptions.ConnectionError:
+                try:
+                    socket.gethostbyname(domain)
+                except socket.gaierror:
+                    self.broken_links.append({"url": link, "domain": domain})
+                    self.add_finding(
+                        "MEDIUM", "Broken Link Hijacking",
+                        f"Unregistered domain referenced: {domain}",
+                        f"Link: {link}\nDomain '{domain}' does not resolve — potentially registerable.",
+                        "Remove references to unregistered domains immediately."
+                    )
+            except Exception:
+                pass
+
+        self.log(f"  Found {len(self.broken_links)} broken/unregistered external links", Fore.CYAN)
+
     # ─── Module 8: Port Scanning (via nmap) ───────────────────────────
     def scan_ports(self):
         self.log("\n[*] Scanning common ports...", Fore.GREEN)
@@ -1370,7 +1818,14 @@ class TupiSecScanner:
             ("ssti", "Testing for template injection", lambda: self.scan_ssti()),
             ("cors", "Advanced CORS testing", lambda: self.scan_cors_advanced()),
             ("subdomains", "Enumerating subdomains", lambda: self.scan_subdomains()),
-            ("param_fuzz", "Fuzzing for hidden parameters", lambda: self.scan_param_fuzz()),
+            ("param_fuzz",       "Fuzzing for hidden parameters",   lambda: self.scan_param_fuzz()),
+            ("sensitive_data",   "Scanning for sensitive data",     lambda: self.scan_sensitive_data()),
+            ("jwt",              "Testing JWT security",            lambda: self.scan_jwt()),
+            ("rate_limit",       "Testing rate limiting",           lambda: self.scan_rate_limit()),
+            ("mixed_content",    "Checking for mixed content",      lambda: self.scan_mixed_content()),
+            ("graphql",          "Testing GraphQL endpoints",       lambda: self.scan_graphql()),
+            ("xxe",              "Testing for XXE",                 lambda: self.scan_xxe()),
+            ("broken_links",     "Checking broken external links",  lambda: self.scan_broken_links()),
         ]
 
         total = len(phases)
@@ -1428,7 +1883,9 @@ def main():
             "whois_info": scanner.whois_info,
             "cve_data": scanner.cve_data,
             "subdomains": getattr(scanner, "subdomains", []),
-            "fuzz_results": getattr(scanner, "fuzz_results", []),
+            "fuzz_results":      getattr(scanner, "fuzz_results", []),
+            "sensitive_findings": getattr(scanner, "sensitive_findings", []),
+            "broken_links":      getattr(scanner, "broken_links", []),
         }
         print(json.dumps(report_data))
     else:

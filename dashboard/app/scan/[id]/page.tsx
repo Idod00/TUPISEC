@@ -23,6 +23,7 @@ import { VirusTotalCard } from "@/components/virustotal-card";
 import { ShodanCard } from "@/components/shodan-card";
 import { FuzzResultsCard } from "@/components/fuzz-results-card";
 import { SubdomainsCard } from "@/components/subdomains-card";
+import { OwaspCoverageCard } from "@/components/owasp-coverage-card";
 import { calculateScore } from "@/lib/scoring";
 import type { ScanReport, ScanRecord, FindingStatusRecord, EnrichmentData } from "@/lib/types";
 
@@ -297,6 +298,11 @@ export default function ScanReportPage() {
             {t("enrichment.noKeys")}
           </p>
         )}
+      </div>
+
+      {/* OWASP Top 10 Coverage */}
+      <div className="mb-6">
+        <OwaspCoverageCard findings={report.findings} />
       </div>
 
       {/* Parameter Fuzzing */}
