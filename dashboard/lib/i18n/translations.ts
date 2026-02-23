@@ -189,6 +189,10 @@ export const translations = {
     "ssl.historyEmpty": "No checks recorded yet.",
     "ssl.details": "Details",
     "ssl.overview": "Overview",
+    "ssl.view.grid": "Grid",
+    "ssl.view.compact": "Compact",
+    "ssl.view.list": "List",
+    "ssl.view.table": "Table",
 
     // SMTP Settings
     "settings.smtp": "Email (SMTP)",
@@ -425,6 +429,10 @@ export const translations = {
     "ssl.historyEmpty": "Sin checks registrados aún.",
     "ssl.details": "Detalles",
     "ssl.overview": "Resumen",
+    "ssl.view.grid": "Cuadrícula",
+    "ssl.view.compact": "Compacto",
+    "ssl.view.list": "Lista",
+    "ssl.view.table": "Tabla",
 
     // SMTP Settings
     "settings.smtp": "Email (SMTP)",
