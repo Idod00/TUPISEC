@@ -228,6 +228,17 @@ export const translations = {
     "settings.notifications": "Notifications",
     "settings.notificationsDesc": "Receive alerts when scans complete or critical findings are detected.",
 
+    // Parameter Fuzzing
+    "fuzz.title": "Parameter Fuzzing",
+    "fuzz.subtitle": "Hidden parameters that changed application behavior",
+    "fuzz.none": "No hidden parameters detected.",
+    "fuzz.param": "Parameter",
+    "fuzz.url": "URL",
+    "fuzz.statusChange": "Status",
+    "fuzz.sizeDelta": "Size Δ",
+    "fuzz.errorPattern": "Disclosure",
+    "fuzz.count": "{n} parameter{s} triggered a response change",
+
     // Footer
     "footer.text": "TupiSec Scanner — Web Security Analysis Framework",
 
@@ -467,6 +478,17 @@ export const translations = {
     "settings.configured": "Configurado",
     "settings.notifications": "Notificaciones",
     "settings.notificationsDesc": "Recibí alertas cuando los escaneos completen o se detecten hallazgos críticos.",
+
+    // Parameter Fuzzing
+    "fuzz.title": "Fuzzing de Parámetros",
+    "fuzz.subtitle": "Parámetros ocultos que cambiaron el comportamiento de la aplicación",
+    "fuzz.none": "No se detectaron parámetros ocultos.",
+    "fuzz.param": "Parámetro",
+    "fuzz.url": "URL",
+    "fuzz.statusChange": "Estado",
+    "fuzz.sizeDelta": "Δ Tamaño",
+    "fuzz.errorPattern": "Divulgación",
+    "fuzz.count": "{n} parámetro{s} generó cambios en la respuesta",
 
     // Footer
     "footer.text": "TupiSec Scanner — Framework de Análisis de Seguridad Web",

@@ -23,6 +23,16 @@ export interface CveRecord {
   description: string;
 }
 
+export interface FuzzResult {
+  url: string;
+  param: string;
+  value: string;
+  baseline_status: number;
+  fuzz_status: number;
+  size_diff: number;
+  error_pattern: string | null;
+}
+
 export interface ScanReport {
   target: string;
   base_url: string;
@@ -35,6 +45,7 @@ export interface ScanReport {
   whois_info?: Record<string, string>;
   cve_data?: CveRecord[];
   subdomains?: SubdomainEntry[];
+  fuzz_results?: FuzzResult[];
 }
 
 export interface ScanRecord {

@@ -21,6 +21,7 @@ import { DnsWhoisCard } from "@/components/dns-whois-card";
 import { ScreenshotCard } from "@/components/screenshot-card";
 import { VirusTotalCard } from "@/components/virustotal-card";
 import { ShodanCard } from "@/components/shodan-card";
+import { FuzzResultsCard } from "@/components/fuzz-results-card";
 import { calculateScore } from "@/lib/scoring";
 import type { ScanReport, ScanRecord, FindingStatusRecord, EnrichmentData } from "@/lib/types";
 
@@ -291,6 +292,13 @@ export default function ScanReportPage() {
           </p>
         )}
       </div>
+
+      {/* Parameter Fuzzing */}
+      {(report.fuzz_results?.length ?? 0) > 0 && (
+        <div className="mb-6">
+          <FuzzResultsCard fuzzResults={report.fuzz_results} />
+        </div>
+      )}
 
       {/* Findings */}
       <div className="mb-6">
