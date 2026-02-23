@@ -447,6 +447,27 @@ export function deleteSSLMonitor(id: string): boolean {
   return result.changes > 0;
 }
 
+export function updateSSLMonitor(
+  id: string,
+  fields: {
+    domain?: string;
+    port?: number;
+    interval?: string;
+    cron_expr?: string;
+    enabled?: number;
+    notify_days_before?: number;
+    notify_email?: string | null;
+  }
+): SSLMonitorRecord | undefined {
+  const db = getDb();
+  const sets = Object.entries(fields)
+    .map(([k]) => `${k} = ?`)
+    .join(", ");
+  const values = Object.values(fields);
+  db.prepare(`UPDATE ssl_monitors SET ${sets} WHERE id = ?`).run(...values, id);
+  return db.prepare(`SELECT * FROM ssl_monitors WHERE id = ?`).get(id) as SSLMonitorRecord | undefined;
+}
+
 export function updateSSLMonitorAfterCheck(
   id: string,
   status: string,

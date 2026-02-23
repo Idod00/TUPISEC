@@ -7,6 +7,7 @@ import { SSLMonitorCard } from "@/components/ssl-monitor-card";
 import { useI18n } from "@/lib/i18n/context";
 import type { SSLMonitorRecord, SSLCheckResult } from "@/lib/types";
 
+
 export default function SSLPage() {
   const { t } = useI18n();
   const [monitors, setMonitors] = useState<SSLMonitorRecord[]>([]);
@@ -57,6 +58,16 @@ export default function SSLPage() {
   const handleDelete = async (id: string) => {
     await fetch(`/api/ssl-monitors/${id}`, { method: "DELETE" });
     load();
+  };
+
+  const handleUpdate = async (id: string, fields: Partial<SSLMonitorRecord>): Promise<SSLMonitorRecord | null> => {
+    const res = await fetch(`/api/ssl-monitors/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fields),
+    });
+    if (res.ok) return res.json();
+    return null;
   };
 
   const handleCheckNow = async (id: string): Promise<{ status: string; result: SSLCheckResult } | null> => {
@@ -180,6 +191,7 @@ export default function SSLPage() {
               monitor={monitor}
               onDelete={handleDelete}
               onCheckNow={handleCheckNow}
+              onUpdate={handleUpdate}
             />
           ))}
         </div>
