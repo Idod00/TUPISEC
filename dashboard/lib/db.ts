@@ -131,6 +131,12 @@ function getDb(): Database.Database {
       );
     `);
 
+    // Migration: add last_result_json column to ssl_monitors
+    const sslCols = _db.prepare("PRAGMA table_info(ssl_monitors)").all() as { name: string }[];
+    if (!sslCols.some((c) => c.name === "last_result_json")) {
+      _db.exec("ALTER TABLE ssl_monitors ADD COLUMN last_result_json TEXT");
+    }
+
     // SSL check history table
     _db.exec(`
       CREATE TABLE IF NOT EXISTS ssl_check_history (
@@ -420,7 +426,7 @@ export function getScanEnrichment(id: string): EnrichmentData | null {
 
 // ─── SSL Monitors ──────────────────────────────────────────────────
 
-export function createSSLMonitor(monitor: Omit<SSLMonitorRecord, "last_check" | "next_check" | "last_status" | "last_days_remaining">): SSLMonitorRecord {
+export function createSSLMonitor(monitor: Omit<SSLMonitorRecord, "last_check" | "next_check" | "last_status" | "last_days_remaining" | "last_result_json">): SSLMonitorRecord {
   const db = getDb();
   db.prepare(
     `INSERT INTO ssl_monitors (id, domain, port, interval, cron_expr, enabled, created_at, notify_days_before, notify_email)
@@ -473,12 +479,13 @@ export function updateSSLMonitorAfterCheck(
   status: string,
   daysRemaining: number | null,
   lastCheck: string,
-  nextCheck: string
+  nextCheck: string,
+  result?: SSLCheckResult
 ): void {
   const db = getDb();
   db.prepare(
-    `UPDATE ssl_monitors SET last_status = ?, last_days_remaining = ?, last_check = ?, next_check = ? WHERE id = ?`
-  ).run(status, daysRemaining, lastCheck, nextCheck, id);
+    `UPDATE ssl_monitors SET last_status = ?, last_days_remaining = ?, last_check = ?, next_check = ?, last_result_json = ? WHERE id = ?`
+  ).run(status, daysRemaining, lastCheck, nextCheck, result ? JSON.stringify(result) : null, id);
 }
 
 // ─── SSL Check History ─────────────────────────────────────────────

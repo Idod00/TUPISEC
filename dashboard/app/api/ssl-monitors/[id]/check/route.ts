@@ -20,7 +20,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     saveSSLCheckHistory(checkId, id, status, result.days_remaining, result);
 
     const now = new Date().toISOString();
-    updateSSLMonitorAfterCheck(id, status, result.days_remaining, now, now);
+    updateSSLMonitorAfterCheck(id, status, result.days_remaining, now, now, result);
 
     return NextResponse.json({ status, result });
   } catch (error) {

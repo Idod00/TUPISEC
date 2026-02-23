@@ -134,7 +134,7 @@ async function executeSSLCheck(monitorId: string): Promise<void> {
 
   const now = new Date().toISOString();
   const nextRun = computeNextRun();
-  updateSSLMonitorAfterCheck(monitorId, status, result.days_remaining, now, nextRun);
+  updateSSLMonitorAfterCheck(monitorId, status, result.days_remaining, now, nextRun, result);
 
   if (status !== "ok") {
     dispatchSSLNotifications(monitor, result, status as "warning" | "error").catch(

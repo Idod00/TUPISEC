@@ -168,6 +168,7 @@ export interface SSLMonitorRecord {
   next_check: string | null;
   last_status: "ok" | "warning" | "error" | null;
   last_days_remaining: number | null;
+  last_result_json: string | null;
   notify_days_before: number;
   notify_email: string | null;
 }
