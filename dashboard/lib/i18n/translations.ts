@@ -42,6 +42,9 @@ export const translations = {
     "scanProgress.failed": "Scan failed",
     "scanProgress.starting": "Starting scan...",
     "scanProgress.step": "Step {step} of {total}",
+    "scanProgress.cancel": "Cancel",
+    "scanProgress.cancelling": "Cancelling...",
+    "scanProgress.cancelled": "Scan cancelled",
 
     // Batch form
     "batch.urlsLabel": "URLs (one per line)",
@@ -312,6 +315,9 @@ export const translations = {
     "scanProgress.failed": "Escaneo fallido",
     "scanProgress.starting": "Iniciando escaneo...",
     "scanProgress.step": "Paso {step} de {total}",
+    "scanProgress.cancel": "Cancelar",
+    "scanProgress.cancelling": "Cancelando...",
+    "scanProgress.cancelled": "Escaneo cancelado",
 
     // Batch form
     "batch.urlsLabel": "URLs (una por línea)",

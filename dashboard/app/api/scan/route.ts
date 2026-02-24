@@ -49,7 +49,8 @@ export async function POST(request: Request) {
       },
       cookies,
       quick_scan === true,
-      typeof skip_modules === "string" ? skip_modules : undefined
+      typeof skip_modules === "string" ? skip_modules : undefined,
+      id
     );
 
     return NextResponse.json({ id: record.id, status: "running" });

@@ -12,6 +12,16 @@ type ProgressCallback = (progress: ScanProgress) => void;
 type CompleteCallback = (report: ScanReport) => void;
 type ErrorCallback = (error: string) => void;
 
+const activeProcesses = new Map<string, ChildProcess>();
+
+export function killScan(scanId: string): boolean {
+  const proc = activeProcesses.get(scanId);
+  if (!proc) return false;
+  proc.kill("SIGTERM");
+  activeProcesses.delete(scanId);
+  return true;
+}
+
 export function runScan(
   url: string,
   onProgress: ProgressCallback,
@@ -19,7 +29,8 @@ export function runScan(
   onError: ErrorCallback,
   cookies?: string,
   quickScan?: boolean,
-  skipModules?: string
+  skipModules?: string,
+  scanId?: string
 ): ChildProcess {
   const args = [SCANNER_PATH, url, "--json-stdout", "--progress", "--quiet"];
   if (cookies) {
@@ -36,6 +47,8 @@ export function runScan(
     cwd: PROJECT_ROOT,
     env: { ...process.env, PYTHONUNBUFFERED: "1" },
   });
+
+  if (scanId) activeProcesses.set(scanId, proc);
 
   let stdout = "";
   let stderr = "";
@@ -62,6 +75,7 @@ export function runScan(
   });
 
   proc.on("close", (code) => {
+    if (scanId) activeProcesses.delete(scanId);
     if (code === 0 && stdout) {
       try {
         const report = JSON.parse(stdout) as ScanReport;
