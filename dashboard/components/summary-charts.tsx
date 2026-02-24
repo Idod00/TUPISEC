@@ -5,11 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Finding, Severity } from "@/lib/types";
 
 const SEVERITY_COLORS: Record<Severity, string> = {
-  CRITICAL: "#ef4444",
-  HIGH: "#f97316",
-  MEDIUM: "#eab308",
-  LOW: "#3b82f6",
-  INFO: "#6b7280",
+  CRITICAL: "#f43f5e",
+  HIGH: "#fb923c",
+  MEDIUM: "#fbbf24",
+  LOW: "#34d399",
+  INFO: "#60a5fa",
 };
 
 const SEVERITY_ORDER: Severity[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
