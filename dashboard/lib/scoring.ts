@@ -28,10 +28,10 @@ export function getGrade(score: number): Grade {
 
 export function getGradeColor(grade: Grade): string {
   switch (grade) {
-    case "A": return "#4ade80";
-    case "B": return "#a3e635";
-    case "C": return "#facc15";
-    case "D": return "#fb923c";
-    case "F": return "#f87171";
+    case "A": return "#22c55e";
+    case "B": return "#3b82f6";
+    case "C": return "#eab308";
+    case "D": return "#f97316";
+    case "F": return "#ef4444";
   }
 }

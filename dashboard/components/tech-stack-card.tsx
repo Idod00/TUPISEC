@@ -12,7 +12,7 @@ const cveSeverityClass: Record<string, string> = {
   CRITICAL: "bg-red-500/20 text-red-400 border-red-500/30",
   HIGH: "bg-orange-500/20 text-orange-400 border-orange-500/30",
   MEDIUM: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  LOW: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+  LOW: "bg-green-500/20 text-green-400 border-green-500/30",
 };
 
 export function TechStackCard({ techStack, cveData }: TechStackCardProps) {
