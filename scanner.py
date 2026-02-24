@@ -2416,7 +2416,7 @@ class TupiSecScanner:
                         continue
 
         # Test forms
-        for form in self.forms[:10]:
+        for form in self.discovered_forms[:10]:
             action = form.get("action", self.base_url)
             method = form.get("method", "get").upper()
             inputs = form.get("inputs", [])
@@ -2452,7 +2452,7 @@ class TupiSecScanner:
 
         # Find upload forms
         upload_forms = []
-        for form in self.forms:
+        for form in self.discovered_forms:
             inputs = form.get("inputs", [])
             if any(i.get("type", "").lower() == "file" for i in inputs):
                 upload_forms.append(form)
