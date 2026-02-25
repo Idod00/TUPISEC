@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAppMonitor, deleteAppMonitor, updateAppMonitor } from "@/lib/db";
-import { unregisterAppMonitor, registerAppMonitor, APP_CRON_MAP } from "@/lib/app-monitor-scheduler";
+import { unregisterAppMonitor, registerAppMonitor, APP_CRON_MAP, computeNextRun } from "@/lib/app-monitor-scheduler";
 import { encryptValue } from "@/lib/crypto";
 import type { AppMonitorInterval } from "@/lib/types";
 
@@ -45,6 +45,7 @@ export async function PATCH(
     if (interval !== undefined) {
       fields.interval = interval;
       fields.cron_expr = APP_CRON_MAP[interval as AppMonitorInterval];
+      fields.next_check = computeNextRun(interval as AppMonitorInterval);
     }
     if (enabled !== undefined) fields.enabled = enabled;
     if (notify_email !== undefined) fields.notify_email = notify_email || null;
