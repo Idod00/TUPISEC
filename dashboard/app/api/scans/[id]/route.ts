@@ -6,7 +6,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const deleted = deleteScan(id);
+  const deleted = await deleteScan(id);
 
   if (!deleted) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });

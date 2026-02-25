@@ -6,6 +6,6 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const statuses = getFindingStatuses(id);
+  const statuses = await getFindingStatuses(id);
   return NextResponse.json(statuses);
 }

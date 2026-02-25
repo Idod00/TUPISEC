@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { listSettings, getSetting } from "@/lib/db";
+import { listSettings } from "@/lib/db";
 import { setSecureSetting } from "@/lib/secure-settings";
-import { ENCRYPTED_KEYS } from "@/lib/crypto";
 
 const ALLOWED_KEYS = [
   "virustotal_api_key",
@@ -17,7 +16,7 @@ const ALLOWED_KEYS = [
 const NON_SECRET_KEYS = ["smtp_host", "smtp_port", "smtp_from", "smtp_secure", "smtp_user"];
 
 export async function GET() {
-  const settings = listSettings();
+  const settings = await listSettings();
   const result = settings
     .filter((s) => ALLOWED_KEYS.includes(s.key))
     .map((s) => ({
@@ -38,7 +37,7 @@ export async function PUT(request: Request) {
       if (!ALLOWED_KEYS.includes(key)) continue;
       if (typeof value !== "string") continue;
       if (value.trim() === "" && key !== "smtp_secure") continue;
-      setSecureSetting(key, value.trim());
+      await setSecureSetting(key, value.trim());
     }
 
     return NextResponse.json({ ok: true });

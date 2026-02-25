@@ -60,11 +60,11 @@ async function fetchShodan(ip: string, apiKey: string): Promise<ShodanData> {
 }
 
 export async function enrichScan(scanId: string): Promise<EnrichmentData | null> {
-  const scan = getScan(scanId);
+  const scan = await getScan(scanId);
   if (!scan) return null;
 
-  const vtKey = getSecureSetting("virustotal_api_key");
-  const shodanKey = getSecureSetting("shodan_api_key");
+  const vtKey = await getSecureSetting("virustotal_api_key");
+  const shodanKey = await getSecureSetting("shodan_api_key");
 
   if (!vtKey && !shodanKey) return null;
 
@@ -102,7 +102,7 @@ export async function enrichScan(scanId: string): Promise<EnrichmentData | null>
   await Promise.allSettled(tasks);
 
   if (result.virustotal || result.shodan) {
-    updateScanEnrichment(scanId, result);
+    await updateScanEnrichment(scanId, result);
     return result;
   }
 

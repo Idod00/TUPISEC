@@ -12,7 +12,7 @@ export async function runBackup(): Promise<string> {
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const filename = `tupisec-${timestamp}.db`;
+  const filename = `tupisec-${timestamp}.sql`;
   const destPath = path.join(BACKUP_DIR, filename);
 
   await backupDb(destPath);

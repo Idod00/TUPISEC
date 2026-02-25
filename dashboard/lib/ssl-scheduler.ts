@@ -47,7 +47,7 @@ async function dispatchSSLNotifications(
   };
 
   // Dispatch to all enabled webhook/slack configs
-  const configs = listNotificationConfigs();
+  const configs = await listNotificationConfigs();
   const webhookPromises = configs
     .filter((c) => c.enabled)
     .map((c) => {
@@ -122,7 +122,7 @@ async function dispatchSSLNotifications(
 }
 
 async function executeSSLCheck(monitorId: string): Promise<void> {
-  const monitor = getSSLMonitor(monitorId);
+  const monitor = await getSSLMonitor(monitorId);
   if (!monitor || !monitor.enabled) return;
 
   console.log(`[ssl-scheduler] Checking SSL for ${monitor.domain}...`);
@@ -130,11 +130,11 @@ async function executeSSLCheck(monitorId: string): Promise<void> {
   const status = getSSLStatus(result, monitor.notify_days_before);
 
   const checkId = randomUUID();
-  saveSSLCheckHistory(checkId, monitorId, status, result.days_remaining, result);
+  await saveSSLCheckHistory(checkId, monitorId, status, result.days_remaining, result);
 
   const now = new Date().toISOString();
   const nextRun = computeNextRun();
-  updateSSLMonitorAfterCheck(monitorId, status, result.days_remaining, now, nextRun, result);
+  await updateSSLMonitorAfterCheck(monitorId, status, result.days_remaining, now, nextRun, result);
 
   if (status !== "ok") {
     dispatchSSLNotifications(monitor, result, status as "warning" | "error").catch(
@@ -165,8 +165,8 @@ export function unregisterSSLMonitor(monitorId: string): void {
   }
 }
 
-export function initSSLScheduler(): void {
-  const monitors = listSSLMonitors();
+export async function initSSLScheduler(): Promise<void> {
+  const monitors = await listSSLMonitors();
   for (const monitor of monitors) {
     registerSSLMonitor(monitor);
   }

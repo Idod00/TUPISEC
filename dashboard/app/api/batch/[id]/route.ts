@@ -6,17 +6,17 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const batch = getBatch(id);
+  const batch = await getBatch(id);
 
   if (!batch) {
     return NextResponse.json({ error: "Batch not found" }, { status: 404 });
   }
 
   const scanIds: string[] = JSON.parse(batch.scan_ids_json || "[]");
-  const scans = scanIds.map((sid) => {
-    const scan = getScan(sid);
-    if (!scan) return null;
-    return {
+  const scanResults = await Promise.all(scanIds.map((sid) => getScan(sid)));
+  const scans = scanResults
+    .filter((scan): scan is NonNullable<typeof scan> => scan != null)
+    .map((scan) => ({
       id: scan.id,
       target_url: scan.target_url,
       status: scan.status,
@@ -29,8 +29,7 @@ export async function GET(
       low_count: scan.low_count,
       info_count: scan.info_count,
       risk_score: scan.risk_score,
-    };
-  }).filter(Boolean);
+    }));
 
   return NextResponse.json({
     ...batch,

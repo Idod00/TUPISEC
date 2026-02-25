@@ -10,14 +10,13 @@ function normalizeUrl(raw: string): string {
   return `https://${s}`;
 }
 
-
 export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
   unregisterAppMonitor(id);
-  const deleted = deleteAppMonitor(id);
+  const deleted = await deleteAppMonitor(id);
   if (!deleted) {
     return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
   }
@@ -29,7 +28,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const monitor = getAppMonitor(id);
+  const monitor = await getAppMonitor(id);
   if (!monitor) {
     return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
   }
@@ -50,7 +49,7 @@ export async function PATCH(
     if (enabled !== undefined) fields.enabled = enabled;
     if (notify_email !== undefined) fields.notify_email = notify_email || null;
 
-    const updated = updateAppMonitor(id, fields as Parameters<typeof updateAppMonitor>[1]);
+    const updated = await updateAppMonitor(id, fields as Parameters<typeof updateAppMonitor>[1]);
     if (!updated) {
       return NextResponse.json({ error: "Update failed" }, { status: 500 });
     }

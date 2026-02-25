@@ -12,8 +12,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "New password must be at least 8 characters" }, { status: 400 });
     }
 
-    const hash = getSetting("auth_password_hash");
-    const salt = getSetting("auth_password_salt");
+    const [hash, salt] = await Promise.all([
+      getSetting("auth_password_hash"),
+      getSetting("auth_password_salt"),
+    ]);
     if (!hash || !salt) {
       return NextResponse.json({ error: "No password configured" }, { status: 404 });
     }
@@ -23,8 +25,10 @@ export async function POST(request: Request) {
     }
 
     const { hash: newHash, salt: newSalt } = hashPassword(newPassword);
-    setSetting("auth_password_hash", newHash);
-    setSetting("auth_password_salt", newSalt);
+    await Promise.all([
+      setSetting("auth_password_hash", newHash),
+      setSetting("auth_password_salt", newSalt),
+    ]);
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: "Server error" }, { status: 500 });

@@ -23,7 +23,7 @@ export async function PUT(
       return NextResponse.json({ error: "Invalid status" }, { status: 400 });
     }
 
-    const record = upsertFindingStatus(
+    const record = await upsertFindingStatus(
       id,
       findingIndex,
       status || "open",

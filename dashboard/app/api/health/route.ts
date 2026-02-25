@@ -3,7 +3,7 @@ import { listScans } from "@/lib/db";
 
 export async function GET() {
   try {
-    listScans();
+    await listScans();
     return NextResponse.json({
       status: "ok",
       uptime: Math.floor(process.uptime()),

@@ -4,7 +4,7 @@ import { unregisterSSLMonitor, registerSSLMonitor, SSL_CRON_MAP } from "@/lib/ss
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const monitor = getSSLMonitor(id);
+  const monitor = await getSSLMonitor(id);
   if (!monitor) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
@@ -23,7 +23,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (body.notify_email !== undefined) fields.notify_email = body.notify_email || null;
   if (body.enabled !== undefined) fields.enabled = body.enabled ? 1 : 0;
 
-  const updated = updateSSLMonitor(id, fields);
+  const updated = await updateSSLMonitor(id, fields);
   if (!updated) return NextResponse.json({ error: "Update failed" }, { status: 500 });
 
   // Re-register cron if interval or domain changed
@@ -35,11 +35,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const monitor = getSSLMonitor(id);
+  const monitor = await getSSLMonitor(id);
   if (!monitor) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   unregisterSSLMonitor(id);
-  deleteSSLMonitor(id);
+  await deleteSSLMonitor(id);
   return NextResponse.json({ ok: true });
 }

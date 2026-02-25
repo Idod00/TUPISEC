@@ -9,7 +9,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const monitor = getAppMonitor(id);
+  const monitor = await getAppMonitor(id);
   if (!monitor) {
     return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
   }
@@ -24,7 +24,7 @@ export async function POST(
 
     // Check 1: Availability
     const availResult = await checkAvailability(monitor.url);
-    saveAppCheckHistory(
+    await saveAppCheckHistory(
       randomUUID(), id, availResult.checked_at,
       availResult.status, availResult.response_ms,
       availResult.status_code ?? null, availResult.error ?? null,
@@ -46,7 +46,7 @@ export async function POST(
         response_detail: "Skipped — site not reachable",
       };
     }
-    saveAppCheckHistory(
+    await saveAppCheckHistory(
       randomUUID(), id, loginResult.checked_at,
       loginResult.status, loginResult.response_ms,
       loginResult.status_code ?? null, loginResult.error ?? null,
@@ -57,7 +57,7 @@ export async function POST(
       availResult.status === "up" && loginResult.status === "up" ? "up" : "down";
 
     const now = new Date().toISOString();
-    updateAppMonitorAfterCheck(id, overallStatus, availResult.response_ms, now, now, loginResult.status);
+    await updateAppMonitorAfterCheck(id, overallStatus, availResult.response_ms, now, now, loginResult.status);
 
     return NextResponse.json({ status: overallStatus, availability: availResult, login: loginResult });
   } catch (error) {

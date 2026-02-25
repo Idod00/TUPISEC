@@ -7,7 +7,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Auth not enabled. Set TUPISEC_AUTH_ENABLED=true to enable." }, { status: 403 });
   }
 
-  const existing = getSetting("auth_password_hash");
+  const existing = await getSetting("auth_password_hash");
   if (existing) {
     return NextResponse.json({ error: "Password already configured. Use /api/auth/change-password to update it." }, { status: 409 });
   }
@@ -19,8 +19,10 @@ export async function POST(request: Request) {
     }
 
     const { hash, salt } = hashPassword(password);
-    setSetting("auth_password_hash", hash);
-    setSetting("auth_password_salt", salt);
+    await Promise.all([
+      setSetting("auth_password_hash", hash),
+      setSetting("auth_password_salt", salt),
+    ]);
 
     const token = createSessionToken();
     const response = NextResponse.json({ ok: true });

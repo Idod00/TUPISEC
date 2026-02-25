@@ -4,7 +4,7 @@ import { createApiToken as createApiTokenRecord, listApiTokens } from "@/lib/db"
 import { createApiToken } from "@/lib/crypto";
 
 export async function GET() {
-  const tokens = listApiTokens();
+  const tokens = await listApiTokens();
   return NextResponse.json(tokens);
 }
 
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
 
     const { token, prefix } = createApiToken();
     const id = randomUUID();
-    createApiTokenRecord(id, name.trim(), prefix);
+    await createApiTokenRecord(id, name.trim(), prefix);
     // Return the full token once — it won't be stored
     return NextResponse.json({ id, name: name.trim(), token, prefix });
   } catch (error) {

@@ -25,22 +25,22 @@ function computeNextRun(cronExpr: string): string {
   return now.toISOString();
 }
 
-function executeSchedule(scheduleId: string) {
-  const schedule = getSchedule(scheduleId);
+async function executeSchedule(scheduleId: string) {
+  const schedule = await getSchedule(scheduleId);
   if (!schedule || !schedule.enabled) return;
 
   const scanId = randomUUID();
-  createScan(scanId, schedule.target_url);
+  await createScan(scanId, schedule.target_url);
 
   runScan(
     schedule.target_url,
     () => {},
-    (report) => {
+    async (report) => {
       const score = calculateScore(report);
-      completeScan(scanId, report, score);
+      await completeScan(scanId, report, score);
       const now = new Date().toISOString();
       const nextRun = computeNextRun(schedule.cron_expr);
-      updateScheduleRun(scheduleId, now, nextRun);
+      await updateScheduleRun(scheduleId, now, nextRun);
       dispatchNotifications(scanId, schedule.target_url, score, report).catch(() => {});
       enrichScan(scanId).catch(() => {});
 
@@ -51,7 +51,7 @@ function executeSchedule(scheduleId: string) {
           if (s >= 90) return "A"; if (s >= 75) return "B"; if (s >= 60) return "C";
           if (s >= 45) return "D"; if (s >= 25) return "F"; return "F";
         })();
-        const baseUrl = getSetting("app_base_url") || "http://localhost:3000";
+        const baseUrl = (await getSetting("app_base_url")) || "http://localhost:3000";
         sendEmail(
           schedule.notify_email,
           `[TupiSec] Scheduled scan complete — ${schedule.target_url}`,
@@ -71,8 +71,8 @@ function executeSchedule(scheduleId: string) {
         ).catch(() => {});
       }
     },
-    () => {
-      failScan(scanId);
+    async () => {
+      await failScan(scanId);
     }
   );
 }
@@ -95,8 +95,8 @@ export function unregisterSchedule(scheduleId: string) {
   }
 }
 
-export function initScheduler() {
-  const schedules = listSchedules();
+export async function initScheduler() {
+  const schedules = await listSchedules();
   for (const schedule of schedules) {
     registerSchedule(schedule);
   }

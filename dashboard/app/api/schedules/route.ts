@@ -5,7 +5,7 @@ import { registerSchedule, CRON_MAP, computeNextRun } from "@/lib/scheduler";
 import type { ScheduleRecord } from "@/lib/types";
 
 export async function GET() {
-  const schedules = listSchedules();
+  const schedules = await listSchedules();
   return NextResponse.json(schedules);
 }
 
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   const nextRun = computeNextRun(cronExpr);
   const id = randomUUID();
 
-  const schedule = createSchedule(id, target_url, interval, cronExpr, nextRun, notify_email || undefined);
+  const schedule = await createSchedule(id, target_url, interval, cronExpr, nextRun, notify_email || undefined);
   registerSchedule(schedule);
 
   return NextResponse.json(schedule, { status: 201 });

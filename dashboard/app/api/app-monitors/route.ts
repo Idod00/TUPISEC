@@ -11,9 +11,8 @@ function normalizeUrl(raw: string): string {
   return `https://${s}`;
 }
 
-
 export async function GET() {
-  const monitors = listAppMonitors();
+  const monitors = await listAppMonitors();
   // Never send password_enc to the client
   return NextResponse.json(
     monitors.map(({ password_enc: _p, ...m }) => m)
@@ -44,7 +43,7 @@ export async function POST(request: Request) {
     const passwordEnc = encryptValue(password);
     const now = new Date().toISOString();
 
-    const monitor = createAppMonitor({
+    const monitor = await createAppMonitor({
       id: randomUUID(),
       name: name.trim(),
       url: normalizeUrl(url),

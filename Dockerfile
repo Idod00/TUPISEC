@@ -13,13 +13,14 @@ RUN npm run build
 # ── Stage 2: Runtime ───────────────────────────────────────────────────
 FROM node:22-alpine AS runner
 
-# System deps: Python 3, Chromium, nmap — all available in Alpine apk
+# System deps: Python 3, Chromium, nmap, postgresql-client — all available in Alpine apk
 RUN apk add --no-cache \
     python3 \
     py3-pip \
     chromium \
     nmap \
-    ca-certificates
+    ca-certificates \
+    postgresql-client
 
 WORKDIR /app
 
@@ -38,8 +39,8 @@ COPY --from=builder /app/dashboard/node_modules ./dashboard/node_modules
 COPY --from=builder /app/dashboard/package.json ./dashboard/package.json
 COPY --from=builder /app/dashboard/public       ./dashboard/public
 
-# Persistent data directory
-RUN mkdir -p dashboard/data/screenshots
+# Persistent data directory (screenshots + backups)
+RUN mkdir -p dashboard/data/screenshots dashboard/data/backups
 
 # Non-root user
 RUN addgroup -S -g 1001 tupisec \

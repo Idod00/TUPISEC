@@ -4,17 +4,17 @@ import { enrichScan } from "@/lib/enrichment";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const scan = getScan(id);
+  const scan = await getScan(id);
   if (!scan) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
-  const enrichment = getScanEnrichment(id);
+  const enrichment = await getScanEnrichment(id);
   return NextResponse.json(enrichment);
 }
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const scan = getScan(id);
+  const scan = await getScan(id);
   if (!scan) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }

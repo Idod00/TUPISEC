@@ -8,7 +8,7 @@ export async function DELETE(
 ) {
   const { id } = await params;
   unregisterSchedule(id);
-  const deleted = deleteSchedule(id);
+  const deleted = await deleteSchedule(id);
   if (!deleted) {
     return NextResponse.json({ error: "Schedule not found" }, { status: 404 });
   }

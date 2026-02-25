@@ -5,7 +5,7 @@ import { registerSSLMonitor, SSL_CRON_MAP } from "@/lib/ssl-scheduler";
 import type { SSLMonitorRecord } from "@/lib/types";
 
 export async function GET() {
-  const monitors = listSSLMonitors();
+  const monitors = await listSSLMonitors();
   return NextResponse.json(monitors);
 }
 
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     const cronExpr = SSL_CRON_MAP[interval as SSLMonitorRecord["interval"]];
     const now = new Date().toISOString();
 
-    const monitor = createSSLMonitor({
+    const monitor = await createSSLMonitor({
       id: uuidv4(),
       domain: domain.replace(/^https?:\/\//, "").split("/")[0].trim(),
       port: typeof port === "number" ? port : 443,

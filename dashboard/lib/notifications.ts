@@ -151,7 +151,7 @@ export async function dispatchNotifications(
   riskScore: number,
   report: ScanReport
 ): Promise<void> {
-  const configs = listNotificationConfigs();
+  const configs = await listNotificationConfigs();
   const summary = report.summary || {};
   const hasCritical = (summary.CRITICAL || 0) > 0;
 
@@ -173,7 +173,7 @@ export async function dispatchNotifications(
 }
 
 export async function testNotification(configId: string): Promise<{ ok: boolean; error?: string }> {
-  const configs = listNotificationConfigs();
+  const configs = await listNotificationConfigs();
   const config = configs.find((c) => c.id === configId);
   if (!config) return { ok: false, error: "Config not found" };
 

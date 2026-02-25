@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     }
 
     const id = uuidv4();
-    const record = createScan(id, url);
+    const record = await createScan(id, url);
 
     // Spawn scanner in background
     runScan(
@@ -33,18 +33,18 @@ export async function POST(request: Request) {
       (progress) => {
         emitProgress(id, progress);
       },
-      (report) => {
+      async (report) => {
         const score = calculateScore(report);
-        completeScan(id, report, score);
+        await completeScan(id, report, score);
         emitProgress(id, { phase: "done", step: 10, total: 10, message: "Complete" });
         // Fire-and-forget background tasks
         captureScreenshot(url, id).catch(() => {});
         dispatchNotifications(id, url, score, report).catch(() => {});
         enrichScan(id).catch(() => {});
       },
-      (error) => {
+      async (error) => {
         console.error(`Scan ${id} failed:`, error);
-        failScan(id);
+        await failScan(id);
         emitProgress(id, { phase: "error", step: 0, total: 10, message: error });
       },
       cookies,

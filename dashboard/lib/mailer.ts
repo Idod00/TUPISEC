@@ -4,13 +4,13 @@ import type { SSLMonitorRecord, SSLCheckResult } from "./types";
 
 async function getTransporter() {
   const nodemailer = await import("nodemailer");
-  const host = getSetting("smtp_host");
+  const host = await getSetting("smtp_host");
   if (!host) throw new Error("SMTP not configured. Set smtp_host in Settings.");
 
-  const port = parseInt(getSetting("smtp_port") ?? "587", 10);
-  const secure = getSetting("smtp_secure") === "true";
-  const user = getSetting("smtp_user") ?? "";
-  const pass = getSecureSetting("smtp_pass") ?? "";
+  const port = parseInt((await getSetting("smtp_port")) ?? "587", 10);
+  const secure = (await getSetting("smtp_secure")) === "true";
+  const user = (await getSetting("smtp_user")) ?? "";
+  const pass = (await getSecureSetting("smtp_pass")) ?? "";
 
   return nodemailer.createTransport({
     host,
@@ -22,7 +22,7 @@ async function getTransporter() {
 
 export async function sendEmail(to: string, subject: string, html: string): Promise<void> {
   const transporter = await getTransporter();
-  const from = getSetting("smtp_from") ?? "TupiSec <noreply@tupisec.io>";
+  const from = (await getSetting("smtp_from")) ?? "TupiSec <noreply@tupisec.io>";
   await transporter.sendMail({ from, to, subject, html });
 }
 

@@ -4,7 +4,7 @@ import { listNotificationConfigs, createNotificationConfig } from "@/lib/db";
 import type { NotificationConfig } from "@/lib/types";
 
 export async function GET() {
-  const configs = listNotificationConfigs();
+  const configs = await listNotificationConfigs();
   return NextResponse.json(configs);
 }
 
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       min_risk_score: typeof min_risk_score === "number" ? min_risk_score : 100,
     };
 
-    const created = createNotificationConfig(config);
+    const created = await createNotificationConfig(config);
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
     console.error("Error creating notification config:", error);

@@ -12,8 +12,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Both scan IDs (a, b) are required" }, { status: 400 });
   }
 
-  const scanA = getScan(idA);
-  const scanB = getScan(idB);
+  const [scanA, scanB] = await Promise.all([getScan(idA), getScan(idB)]);
 
   if (!scanA || !scanB) {
     return NextResponse.json({ error: "One or both scans not found" }, { status: 404 });

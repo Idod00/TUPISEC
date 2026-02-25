@@ -1,229 +1,166 @@
-import Database from "better-sqlite3";
+import { Pool } from "pg";
 import path from "path";
+import { exec } from "child_process";
+import { promisify } from "util";
 import type { ScanRecord, ScanReport, BatchRecord, FindingStatusRecord, FindingStatusValue, ScheduleRecord, NotificationConfig, EnrichmentData, SSLMonitorRecord, SSLCheckHistoryRecord, SSLCheckResult, AppMonitorRecord, AppCheckHistoryRecord } from "./types";
 
-const DB_PATH = path.join(process.cwd(), "data", "tupisec.db");
+const execAsync = promisify(exec);
 
-let _db: Database.Database | null = null;
+let _pool: Pool | null = null;
 
-function getDb(): Database.Database {
-  if (!_db) {
-    const fs = require("fs");
-    const dir = path.dirname(DB_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    _db = new Database(DB_PATH);
-    _db.pragma("journal_mode = WAL");
-    _db.pragma("busy_timeout = 5000");
-
-    _db.exec(`
-      CREATE TABLE IF NOT EXISTS scans (
-        id TEXT PRIMARY KEY,
-        target_url TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'running',
-        created_at TEXT NOT NULL,
-        completed_at TEXT,
-        report_json TEXT,
-        finding_count INTEGER DEFAULT 0,
-        critical_count INTEGER DEFAULT 0,
-        high_count INTEGER DEFAULT 0,
-        medium_count INTEGER DEFAULT 0,
-        low_count INTEGER DEFAULT 0,
-        info_count INTEGER DEFAULT 0
-      );
-    `);
-
-    // Migration: add risk_score column
-    const cols = _db.prepare("PRAGMA table_info(scans)").all() as { name: string }[];
-    if (!cols.some((c) => c.name === "risk_score")) {
-      _db.exec("ALTER TABLE scans ADD COLUMN risk_score INTEGER DEFAULT NULL");
-    }
-
-    // Batches table
-    _db.exec(`
-      CREATE TABLE IF NOT EXISTS batches (
-        id TEXT PRIMARY KEY,
-        status TEXT NOT NULL DEFAULT 'running',
-        created_at TEXT NOT NULL,
-        completed_at TEXT,
-        total_urls INTEGER DEFAULT 0,
-        completed_urls INTEGER DEFAULT 0,
-        failed_urls INTEGER DEFAULT 0,
-        urls_json TEXT NOT NULL,
-        scan_ids_json TEXT NOT NULL DEFAULT '[]'
-      );
-    `);
-
-    // Finding status table
-    _db.exec(`
-      CREATE TABLE IF NOT EXISTS finding_status (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        scan_id TEXT NOT NULL,
-        finding_index INTEGER NOT NULL,
-        status TEXT NOT NULL DEFAULT 'open',
-        note TEXT NOT NULL DEFAULT '',
-        updated_at TEXT NOT NULL,
-        UNIQUE(scan_id, finding_index)
-      );
-    `);
-
-    // Schedules table
-    _db.exec(`
-      CREATE TABLE IF NOT EXISTS schedules (
-        id TEXT PRIMARY KEY,
-        target_url TEXT NOT NULL,
-        interval TEXT NOT NULL,
-        cron_expr TEXT NOT NULL,
-        enabled INTEGER NOT NULL DEFAULT 1,
-        created_at TEXT NOT NULL,
-        last_run TEXT,
-        next_run TEXT
-      );
-    `);
-
-    // Migration: add notify_email column to schedules
-    const scheduleCols = _db.prepare("PRAGMA table_info(schedules)").all() as { name: string }[];
-    if (!scheduleCols.some((c) => c.name === "notify_email")) {
-      _db.exec("ALTER TABLE schedules ADD COLUMN notify_email TEXT");
-    }
-
-    // Notification configs table
-    _db.exec(`
-      CREATE TABLE IF NOT EXISTS notification_configs (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        type TEXT NOT NULL,
-        url TEXT NOT NULL,
-        enabled INTEGER DEFAULT 1,
-        notify_on_complete INTEGER DEFAULT 1,
-        notify_on_critical INTEGER DEFAULT 1,
-        min_risk_score INTEGER DEFAULT 100,
-        created_at TEXT NOT NULL
-      );
-    `);
-
-    // Settings table (key-value store)
-    _db.exec(`
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-    `);
-
-    // Migration: add enrichment_json column to scans
-    const scanCols = _db.prepare("PRAGMA table_info(scans)").all() as { name: string }[];
-    if (!scanCols.some((c) => c.name === "enrichment_json")) {
-      _db.exec("ALTER TABLE scans ADD COLUMN enrichment_json TEXT");
-    }
-
-    // SSL monitors table
-    _db.exec(`
-      CREATE TABLE IF NOT EXISTS ssl_monitors (
-        id TEXT PRIMARY KEY,
-        domain TEXT NOT NULL,
-        port INTEGER DEFAULT 443,
-        interval TEXT NOT NULL,
-        cron_expr TEXT NOT NULL,
-        enabled INTEGER DEFAULT 1,
-        created_at TEXT NOT NULL,
-        last_check TEXT,
-        next_check TEXT,
-        last_status TEXT,
-        last_days_remaining INTEGER,
-        notify_days_before INTEGER DEFAULT 14,
-        notify_email TEXT
-      );
-    `);
-
-    // Migration: add last_result_json column to ssl_monitors
-    const sslCols = _db.prepare("PRAGMA table_info(ssl_monitors)").all() as { name: string }[];
-    if (!sslCols.some((c) => c.name === "last_result_json")) {
-      _db.exec("ALTER TABLE ssl_monitors ADD COLUMN last_result_json TEXT");
-    }
-
-    // SSL check history table
-    _db.exec(`
-      CREATE TABLE IF NOT EXISTS ssl_check_history (
-        id TEXT PRIMARY KEY,
-        monitor_id TEXT NOT NULL,
-        checked_at TEXT NOT NULL,
-        status TEXT NOT NULL,
-        days_remaining INTEGER,
-        result_json TEXT NOT NULL
-      );
-    `);
-
-    // API tokens table
-    _db.exec(`
-      CREATE TABLE IF NOT EXISTS api_tokens (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        token_prefix TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        last_used TEXT
-      );
-    `);
-
-    // App monitors table
-    _db.exec(`
-      CREATE TABLE IF NOT EXISTS app_monitors (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        url TEXT NOT NULL,
-        username TEXT NOT NULL,
-        password_enc TEXT NOT NULL,
-        interval TEXT NOT NULL,
-        cron_expr TEXT NOT NULL,
-        enabled INTEGER DEFAULT 1,
-        created_at TEXT NOT NULL,
-        last_check TEXT,
-        next_check TEXT,
-        last_status TEXT,
-        last_response_ms INTEGER,
-        notify_email TEXT
-      );
-    `);
-
-    // App check history table
-    _db.exec(`
-      CREATE TABLE IF NOT EXISTS app_check_history (
-        id TEXT PRIMARY KEY,
-        monitor_id TEXT NOT NULL,
-        checked_at TEXT NOT NULL,
-        status TEXT NOT NULL,
-        response_ms INTEGER,
-        status_code INTEGER,
-        error TEXT
-      );
-    `);
-    // Migrations: app_monitors
-    const appMonCols = _db.prepare("PRAGMA table_info(app_monitors)").all() as { name: string }[];
-    if (!appMonCols.some((c) => c.name === "last_login_status")) {
-      _db.exec("ALTER TABLE app_monitors ADD COLUMN last_login_status TEXT");
-    }
-
-    // Migrations: app_check_history
-    const appHistCols = _db.prepare("PRAGMA table_info(app_check_history)").all() as { name: string }[];
-    if (!appHistCols.some((c) => c.name === "check_type")) {
-      _db.exec("ALTER TABLE app_check_history ADD COLUMN check_type TEXT NOT NULL DEFAULT 'login'");
-    }
-    if (!appHistCols.some((c) => c.name === "response_detail")) {
-      _db.exec("ALTER TABLE app_check_history ADD COLUMN response_detail TEXT");
-    }
+function getPool(): Pool {
+  if (!_pool) {
+    _pool = new Pool({ connectionString: process.env.DATABASE_URL });
   }
-  return _db;
+  return _pool;
+}
+
+export async function initDb(): Promise<void> {
+  const pool = getPool();
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS scans (
+      id TEXT PRIMARY KEY,
+      target_url TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'running',
+      created_at TEXT NOT NULL,
+      completed_at TEXT,
+      report_json TEXT,
+      finding_count INTEGER DEFAULT 0,
+      critical_count INTEGER DEFAULT 0,
+      high_count INTEGER DEFAULT 0,
+      medium_count INTEGER DEFAULT 0,
+      low_count INTEGER DEFAULT 0,
+      info_count INTEGER DEFAULT 0,
+      risk_score INTEGER DEFAULT NULL,
+      enrichment_json TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS batches (
+      id TEXT PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'running',
+      created_at TEXT NOT NULL,
+      completed_at TEXT,
+      total_urls INTEGER DEFAULT 0,
+      completed_urls INTEGER DEFAULT 0,
+      failed_urls INTEGER DEFAULT 0,
+      urls_json TEXT NOT NULL,
+      scan_ids_json TEXT NOT NULL DEFAULT '[]'
+    );
+
+    CREATE TABLE IF NOT EXISTS finding_status (
+      id SERIAL PRIMARY KEY,
+      scan_id TEXT NOT NULL,
+      finding_index INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      note TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL,
+      UNIQUE(scan_id, finding_index)
+    );
+
+    CREATE TABLE IF NOT EXISTS schedules (
+      id TEXT PRIMARY KEY,
+      target_url TEXT NOT NULL,
+      interval TEXT NOT NULL,
+      cron_expr TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      last_run TEXT,
+      next_run TEXT,
+      notify_email TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS notification_configs (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      url TEXT NOT NULL,
+      enabled INTEGER DEFAULT 1,
+      notify_on_complete INTEGER DEFAULT 1,
+      notify_on_critical INTEGER DEFAULT 1,
+      min_risk_score INTEGER DEFAULT 100,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS ssl_monitors (
+      id TEXT PRIMARY KEY,
+      domain TEXT NOT NULL,
+      port INTEGER DEFAULT 443,
+      interval TEXT NOT NULL,
+      cron_expr TEXT NOT NULL,
+      enabled INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL,
+      last_check TEXT,
+      next_check TEXT,
+      last_status TEXT,
+      last_days_remaining INTEGER,
+      notify_days_before INTEGER DEFAULT 14,
+      notify_email TEXT,
+      last_result_json TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS ssl_check_history (
+      id TEXT PRIMARY KEY,
+      monitor_id TEXT NOT NULL,
+      checked_at TEXT NOT NULL,
+      status TEXT NOT NULL,
+      days_remaining INTEGER,
+      result_json TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS api_tokens (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      token_prefix TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      last_used TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS app_monitors (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      username TEXT NOT NULL,
+      password_enc TEXT NOT NULL,
+      interval TEXT NOT NULL,
+      cron_expr TEXT NOT NULL,
+      enabled INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL,
+      last_check TEXT,
+      next_check TEXT,
+      last_status TEXT,
+      last_response_ms INTEGER,
+      notify_email TEXT,
+      last_login_status TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS app_check_history (
+      id TEXT PRIMARY KEY,
+      monitor_id TEXT NOT NULL,
+      checked_at TEXT NOT NULL,
+      status TEXT NOT NULL,
+      response_ms INTEGER,
+      status_code INTEGER,
+      error TEXT,
+      check_type TEXT NOT NULL DEFAULT 'login',
+      response_detail TEXT
+    );
+  `);
 }
 
 // ─── Scans ─────────────────────────────────────────────────────────
 
-export function createScan(id: string, targetUrl: string): ScanRecord {
-  const db = getDb();
+export async function createScan(id: string, targetUrl: string): Promise<ScanRecord> {
   const now = new Date().toISOString();
-  db.prepare(
-    `INSERT INTO scans (id, target_url, status, created_at) VALUES (?, ?, 'running', ?)`
-  ).run(id, targetUrl, now);
+  await getPool().query(
+    `INSERT INTO scans (id, target_url, status, created_at) VALUES ($1, $2, 'running', $3)`,
+    [id, targetUrl, now]
+  );
   return {
     id,
     target_url: targetUrl,
@@ -241,80 +178,75 @@ export function createScan(id: string, targetUrl: string): ScanRecord {
   };
 }
 
-export function completeScan(id: string, report: ScanReport, riskScore: number): void {
-  const db = getDb();
+export async function completeScan(id: string, report: ScanReport, riskScore: number): Promise<void> {
   const now = new Date().toISOString();
   const summary = report.summary || {};
-  db.prepare(
+  await getPool().query(
     `UPDATE scans SET
       status = 'completed',
-      completed_at = ?,
-      report_json = ?,
-      finding_count = ?,
-      critical_count = ?,
-      high_count = ?,
-      medium_count = ?,
-      low_count = ?,
-      info_count = ?,
-      risk_score = ?
-    WHERE id = ?`
-  ).run(
-    now,
-    JSON.stringify(report),
-    report.findings.length,
-    summary.CRITICAL || 0,
-    summary.HIGH || 0,
-    summary.MEDIUM || 0,
-    summary.LOW || 0,
-    summary.INFO || 0,
-    riskScore,
-    id
+      completed_at = $1,
+      report_json = $2,
+      finding_count = $3,
+      critical_count = $4,
+      high_count = $5,
+      medium_count = $6,
+      low_count = $7,
+      info_count = $8,
+      risk_score = $9
+    WHERE id = $10`,
+    [
+      now,
+      JSON.stringify(report),
+      report.findings.length,
+      summary.CRITICAL || 0,
+      summary.HIGH || 0,
+      summary.MEDIUM || 0,
+      summary.LOW || 0,
+      summary.INFO || 0,
+      riskScore,
+      id,
+    ]
   );
 }
 
-export function failScan(id: string): void {
-  const db = getDb();
+export async function failScan(id: string): Promise<void> {
   const now = new Date().toISOString();
-  db.prepare(
-    `UPDATE scans SET status = 'failed', completed_at = ? WHERE id = ?`
-  ).run(now, id);
+  await getPool().query(
+    `UPDATE scans SET status = 'failed', completed_at = $1 WHERE id = $2`,
+    [now, id]
+  );
 }
 
-export function getScan(id: string): ScanRecord | undefined {
-  const db = getDb();
-  return db.prepare(`SELECT * FROM scans WHERE id = ?`).get(id) as
-    | ScanRecord
-    | undefined;
+export async function getScan(id: string): Promise<ScanRecord | undefined> {
+  const { rows } = await getPool().query(`SELECT * FROM scans WHERE id = $1`, [id]);
+  return rows[0];
 }
 
-export function listScans(): Omit<ScanRecord, "report_json">[] {
-  const db = getDb();
-  return db
-    .prepare(
-      `SELECT id, target_url, status, created_at, completed_at,
-              finding_count, critical_count, high_count, medium_count, low_count, info_count,
-              risk_score
-       FROM scans ORDER BY created_at DESC`
-    )
-    .all() as Omit<ScanRecord, "report_json">[];
+export async function listScans(): Promise<Omit<ScanRecord, "report_json">[]> {
+  const { rows } = await getPool().query(
+    `SELECT id, target_url, status, created_at, completed_at,
+            finding_count, critical_count, high_count, medium_count, low_count, info_count,
+            risk_score
+     FROM scans ORDER BY created_at DESC`
+  );
+  return rows;
 }
 
-export function deleteScan(id: string): boolean {
-  const db = getDb();
-  const result = db.prepare(`DELETE FROM scans WHERE id = ?`).run(id);
-  db.prepare(`DELETE FROM finding_status WHERE scan_id = ?`).run(id);
-  return result.changes > 0;
+export async function deleteScan(id: string): Promise<boolean> {
+  const result = await getPool().query(`DELETE FROM scans WHERE id = $1`, [id]);
+  await getPool().query(`DELETE FROM finding_status WHERE scan_id = $1`, [id]);
+  return (result.rowCount ?? 0) > 0;
 }
 
 // ─── Batches ───────────────────────────────────────────────────────
 
-export function createBatch(id: string, urls: string[]): BatchRecord {
-  const db = getDb();
+export async function createBatch(id: string, urls: string[]): Promise<BatchRecord> {
   const now = new Date().toISOString();
   const urlsJson = JSON.stringify(urls);
-  db.prepare(
-    `INSERT INTO batches (id, status, created_at, total_urls, urls_json, scan_ids_json) VALUES (?, 'running', ?, ?, ?, '[]')`
-  ).run(id, now, urls.length, urlsJson);
+  await getPool().query(
+    `INSERT INTO batches (id, status, created_at, total_urls, urls_json, scan_ids_json) VALUES ($1, 'running', $2, $3, $4, '[]')`,
+    [id, now, urls.length, urlsJson]
+  );
   return {
     id,
     status: "running",
@@ -328,159 +260,177 @@ export function createBatch(id: string, urls: string[]): BatchRecord {
   };
 }
 
-export function getBatch(id: string): BatchRecord | undefined {
-  const db = getDb();
-  return db.prepare(`SELECT * FROM batches WHERE id = ?`).get(id) as BatchRecord | undefined;
+export async function getBatch(id: string): Promise<BatchRecord | undefined> {
+  const { rows } = await getPool().query(`SELECT * FROM batches WHERE id = $1`, [id]);
+  return rows[0];
 }
 
-export function updateBatchProgress(id: string, scanIds: string[], completedUrls: number, failedUrls: number): void {
-  const db = getDb();
-  db.prepare(
-    `UPDATE batches SET scan_ids_json = ?, completed_urls = ?, failed_urls = ? WHERE id = ?`
-  ).run(JSON.stringify(scanIds), completedUrls, failedUrls, id);
+export async function updateBatchProgress(id: string, scanIds: string[], completedUrls: number, failedUrls: number): Promise<void> {
+  await getPool().query(
+    `UPDATE batches SET scan_ids_json = $1, completed_urls = $2, failed_urls = $3 WHERE id = $4`,
+    [JSON.stringify(scanIds), completedUrls, failedUrls, id]
+  );
 }
 
-export function completeBatch(id: string): void {
-  const db = getDb();
+export async function completeBatch(id: string): Promise<void> {
   const now = new Date().toISOString();
-  db.prepare(
-    `UPDATE batches SET status = 'completed', completed_at = ? WHERE id = ?`
-  ).run(now, id);
+  await getPool().query(
+    `UPDATE batches SET status = 'completed', completed_at = $1 WHERE id = $2`,
+    [now, id]
+  );
 }
 
-export function listBatches(): BatchRecord[] {
-  const db = getDb();
-  return db.prepare(`SELECT * FROM batches ORDER BY created_at DESC`).all() as BatchRecord[];
+export async function listBatches(): Promise<BatchRecord[]> {
+  const { rows } = await getPool().query(`SELECT * FROM batches ORDER BY created_at DESC`);
+  return rows;
 }
 
-export function deleteBatch(id: string): boolean {
-  const db = getDb();
-  const result = db.prepare(`DELETE FROM batches WHERE id = ?`).run(id);
-  return result.changes > 0;
+export async function deleteBatch(id: string): Promise<boolean> {
+  const result = await getPool().query(`DELETE FROM batches WHERE id = $1`, [id]);
+  return (result.rowCount ?? 0) > 0;
 }
 
 // ─── Finding Status ────────────────────────────────────────────────
 
-export function getFindingStatuses(scanId: string): FindingStatusRecord[] {
-  const db = getDb();
-  return db.prepare(`SELECT * FROM finding_status WHERE scan_id = ?`).all(scanId) as FindingStatusRecord[];
+export async function getFindingStatuses(scanId: string): Promise<FindingStatusRecord[]> {
+  const { rows } = await getPool().query(
+    `SELECT * FROM finding_status WHERE scan_id = $1`,
+    [scanId]
+  );
+  return rows;
 }
 
-export function upsertFindingStatus(scanId: string, findingIndex: number, status: FindingStatusValue, note: string): FindingStatusRecord {
-  const db = getDb();
+export async function upsertFindingStatus(scanId: string, findingIndex: number, status: FindingStatusValue, note: string): Promise<FindingStatusRecord> {
   const now = new Date().toISOString();
-  db.prepare(
+  const { rows } = await getPool().query(
     `INSERT INTO finding_status (scan_id, finding_index, status, note, updated_at)
-     VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(scan_id, finding_index) DO UPDATE SET status = excluded.status, note = excluded.note, updated_at = excluded.updated_at`
-  ).run(scanId, findingIndex, status, note, now);
-  return db.prepare(
-    `SELECT * FROM finding_status WHERE scan_id = ? AND finding_index = ?`
-  ).get(scanId, findingIndex) as FindingStatusRecord;
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT(scan_id, finding_index) DO UPDATE SET status = EXCLUDED.status, note = EXCLUDED.note, updated_at = EXCLUDED.updated_at
+     RETURNING *`,
+    [scanId, findingIndex, status, note, now]
+  );
+  return rows[0];
 }
 
 // ─── Schedules ─────────────────────────────────────────────────────
 
-export function createSchedule(
+export async function createSchedule(
   id: string,
   targetUrl: string,
   interval: ScheduleRecord["interval"],
   cronExpr: string,
   nextRun: string,
   notifyEmail?: string
-): ScheduleRecord {
-  const db = getDb();
+): Promise<ScheduleRecord> {
   const now = new Date().toISOString();
-  db.prepare(
+  const { rows } = await getPool().query(
     `INSERT INTO schedules (id, target_url, interval, cron_expr, enabled, created_at, next_run, notify_email)
-     VALUES (?, ?, ?, ?, 1, ?, ?, ?)`
-  ).run(id, targetUrl, interval, cronExpr, now, nextRun, notifyEmail ?? null);
-  return db.prepare(`SELECT * FROM schedules WHERE id = ?`).get(id) as ScheduleRecord;
+     VALUES ($1, $2, $3, $4, 1, $5, $6, $7)
+     RETURNING *`,
+    [id, targetUrl, interval, cronExpr, now, nextRun, notifyEmail ?? null]
+  );
+  return rows[0];
 }
 
-export function listSchedules(): ScheduleRecord[] {
-  const db = getDb();
-  return db.prepare(`SELECT * FROM schedules ORDER BY created_at DESC`).all() as ScheduleRecord[];
+export async function listSchedules(): Promise<ScheduleRecord[]> {
+  const { rows } = await getPool().query(`SELECT * FROM schedules ORDER BY created_at DESC`);
+  return rows;
 }
 
-export function getSchedule(id: string): ScheduleRecord | undefined {
-  const db = getDb();
-  return db.prepare(`SELECT * FROM schedules WHERE id = ?`).get(id) as ScheduleRecord | undefined;
+export async function getSchedule(id: string): Promise<ScheduleRecord | undefined> {
+  const { rows } = await getPool().query(`SELECT * FROM schedules WHERE id = $1`, [id]);
+  return rows[0];
 }
 
-export function deleteSchedule(id: string): boolean {
-  const db = getDb();
-  const result = db.prepare(`DELETE FROM schedules WHERE id = ?`).run(id);
-  return result.changes > 0;
+export async function deleteSchedule(id: string): Promise<boolean> {
+  const result = await getPool().query(`DELETE FROM schedules WHERE id = $1`, [id]);
+  return (result.rowCount ?? 0) > 0;
 }
 
-export function updateScheduleRun(id: string, lastRun: string, nextRun: string): void {
-  const db = getDb();
-  db.prepare(`UPDATE schedules SET last_run = ?, next_run = ? WHERE id = ?`).run(lastRun, nextRun, id);
+export async function updateScheduleRun(id: string, lastRun: string, nextRun: string): Promise<void> {
+  await getPool().query(
+    `UPDATE schedules SET last_run = $1, next_run = $2 WHERE id = $3`,
+    [lastRun, nextRun, id]
+  );
 }
 
 // ─── Notification Configs ───────────────────────────────────────────
 
-export function listNotificationConfigs(): NotificationConfig[] {
-  const db = getDb();
-  return db.prepare(`SELECT * FROM notification_configs ORDER BY created_at DESC`).all() as NotificationConfig[];
+export async function listNotificationConfigs(): Promise<NotificationConfig[]> {
+  const { rows } = await getPool().query(`SELECT * FROM notification_configs ORDER BY created_at DESC`);
+  return rows;
 }
 
-export function getNotificationConfig(id: string): NotificationConfig | undefined {
-  const db = getDb();
-  return db.prepare(`SELECT * FROM notification_configs WHERE id = ?`).get(id) as NotificationConfig | undefined;
+export async function getNotificationConfig(id: string): Promise<NotificationConfig | undefined> {
+  const { rows } = await getPool().query(
+    `SELECT * FROM notification_configs WHERE id = $1`,
+    [id]
+  );
+  return rows[0];
 }
 
-export function createNotificationConfig(config: Omit<NotificationConfig, "created_at">): NotificationConfig {
-  const db = getDb();
+export async function createNotificationConfig(config: Omit<NotificationConfig, "created_at">): Promise<NotificationConfig> {
   const now = new Date().toISOString();
-  db.prepare(
+  const { rows } = await getPool().query(
     `INSERT INTO notification_configs (id, name, type, url, enabled, notify_on_complete, notify_on_critical, min_risk_score, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(config.id, config.name, config.type, config.url, config.enabled ? 1 : 0,
-        config.notify_on_complete ? 1 : 0, config.notify_on_critical ? 1 : 0,
-        config.min_risk_score, now);
-  return db.prepare(`SELECT * FROM notification_configs WHERE id = ?`).get(config.id) as NotificationConfig;
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING *`,
+    [
+      config.id, config.name, config.type, config.url,
+      config.enabled ? 1 : 0, config.notify_on_complete ? 1 : 0,
+      config.notify_on_critical ? 1 : 0, config.min_risk_score, now,
+    ]
+  );
+  return rows[0];
 }
 
-export function deleteNotificationConfig(id: string): boolean {
-  const db = getDb();
-  const result = db.prepare(`DELETE FROM notification_configs WHERE id = ?`).run(id);
-  return result.changes > 0;
+export async function deleteNotificationConfig(id: string): Promise<boolean> {
+  const result = await getPool().query(
+    `DELETE FROM notification_configs WHERE id = $1`,
+    [id]
+  );
+  return (result.rowCount ?? 0) > 0;
 }
 
 // ─── Settings ──────────────────────────────────────────────────────
 
-export function getSetting(key: string): string | null {
-  const db = getDb();
-  const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as { value: string } | undefined;
-  return row ? row.value : null;
+export async function getSetting(key: string): Promise<string | null> {
+  const { rows } = await getPool().query(
+    `SELECT value FROM settings WHERE key = $1`,
+    [key]
+  );
+  return rows[0]?.value ?? null;
 }
 
-export function setSetting(key: string, value: string): void {
-  const db = getDb();
+export async function setSetting(key: string, value: string): Promise<void> {
   const now = new Date().toISOString();
-  db.prepare(
-    `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
-  ).run(key, value, now);
+  await getPool().query(
+    `INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, $3)
+     ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
+    [key, value, now]
+  );
 }
 
-export function listSettings(): { key: string; value: string; updated_at: string }[] {
-  const db = getDb();
-  return db.prepare(`SELECT * FROM settings`).all() as { key: string; value: string; updated_at: string }[];
+export async function listSettings(): Promise<{ key: string; value: string; updated_at: string }[]> {
+  const { rows } = await getPool().query(`SELECT * FROM settings`);
+  return rows;
 }
 
 // ─── Enrichment ────────────────────────────────────────────────────
 
-export function updateScanEnrichment(id: string, enrichment: EnrichmentData): void {
-  const db = getDb();
-  db.prepare(`UPDATE scans SET enrichment_json = ? WHERE id = ?`).run(JSON.stringify(enrichment), id);
+export async function updateScanEnrichment(id: string, enrichment: EnrichmentData): Promise<void> {
+  await getPool().query(
+    `UPDATE scans SET enrichment_json = $1 WHERE id = $2`,
+    [JSON.stringify(enrichment), id]
+  );
 }
 
-export function getScanEnrichment(id: string): EnrichmentData | null {
-  const db = getDb();
-  const row = db.prepare(`SELECT enrichment_json FROM scans WHERE id = ?`).get(id) as { enrichment_json: string | null } | undefined;
+export async function getScanEnrichment(id: string): Promise<EnrichmentData | null> {
+  const { rows } = await getPool().query(
+    `SELECT enrichment_json FROM scans WHERE id = $1`,
+    [id]
+  );
+  const row = rows[0];
   if (!row || !row.enrichment_json) return null;
   try {
     return JSON.parse(row.enrichment_json) as EnrichmentData;
@@ -491,34 +441,36 @@ export function getScanEnrichment(id: string): EnrichmentData | null {
 
 // ─── SSL Monitors ──────────────────────────────────────────────────
 
-export function createSSLMonitor(monitor: Omit<SSLMonitorRecord, "last_check" | "next_check" | "last_status" | "last_days_remaining" | "last_result_json">): SSLMonitorRecord {
-  const db = getDb();
-  db.prepare(
+export async function createSSLMonitor(monitor: Omit<SSLMonitorRecord, "last_check" | "next_check" | "last_status" | "last_days_remaining" | "last_result_json">): Promise<SSLMonitorRecord> {
+  const { rows } = await getPool().query(
     `INSERT INTO ssl_monitors (id, domain, port, interval, cron_expr, enabled, created_at, notify_days_before, notify_email)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(monitor.id, monitor.domain, monitor.port, monitor.interval, monitor.cron_expr,
-        monitor.enabled, monitor.created_at, monitor.notify_days_before, monitor.notify_email ?? null);
-  return db.prepare(`SELECT * FROM ssl_monitors WHERE id = ?`).get(monitor.id) as SSLMonitorRecord;
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING *`,
+    [
+      monitor.id, monitor.domain, monitor.port, monitor.interval, monitor.cron_expr,
+      monitor.enabled, monitor.created_at, monitor.notify_days_before, monitor.notify_email ?? null,
+    ]
+  );
+  return rows[0];
 }
 
-export function listSSLMonitors(): SSLMonitorRecord[] {
-  const db = getDb();
-  return db.prepare(`SELECT * FROM ssl_monitors ORDER BY created_at DESC`).all() as SSLMonitorRecord[];
+export async function listSSLMonitors(): Promise<SSLMonitorRecord[]> {
+  const { rows } = await getPool().query(`SELECT * FROM ssl_monitors ORDER BY created_at DESC`);
+  return rows;
 }
 
-export function getSSLMonitor(id: string): SSLMonitorRecord | undefined {
-  const db = getDb();
-  return db.prepare(`SELECT * FROM ssl_monitors WHERE id = ?`).get(id) as SSLMonitorRecord | undefined;
+export async function getSSLMonitor(id: string): Promise<SSLMonitorRecord | undefined> {
+  const { rows } = await getPool().query(`SELECT * FROM ssl_monitors WHERE id = $1`, [id]);
+  return rows[0];
 }
 
-export function deleteSSLMonitor(id: string): boolean {
-  const db = getDb();
-  const result = db.prepare(`DELETE FROM ssl_monitors WHERE id = ?`).run(id);
-  db.prepare(`DELETE FROM ssl_check_history WHERE monitor_id = ?`).run(id);
-  return result.changes > 0;
+export async function deleteSSLMonitor(id: string): Promise<boolean> {
+  const result = await getPool().query(`DELETE FROM ssl_monitors WHERE id = $1`, [id]);
+  await getPool().query(`DELETE FROM ssl_check_history WHERE monitor_id = $1`, [id]);
+  return (result.rowCount ?? 0) > 0;
 }
 
-export function updateSSLMonitor(
+export async function updateSSLMonitor(
   id: string,
   fields: {
     domain?: string;
@@ -529,58 +481,61 @@ export function updateSSLMonitor(
     notify_days_before?: number;
     notify_email?: string | null;
   }
-): SSLMonitorRecord | undefined {
-  const db = getDb();
-  const sets = Object.entries(fields)
-    .map(([k]) => `${k} = ?`)
-    .join(", ");
+): Promise<SSLMonitorRecord | undefined> {
+  const keys = Object.keys(fields);
   const values = Object.values(fields);
-  db.prepare(`UPDATE ssl_monitors SET ${sets} WHERE id = ?`).run(...values, id);
-  return db.prepare(`SELECT * FROM ssl_monitors WHERE id = ?`).get(id) as SSLMonitorRecord | undefined;
+  const sets = keys.map((k, i) => `${k} = $${i + 1}`).join(", ");
+  const { rows } = await getPool().query(
+    `UPDATE ssl_monitors SET ${sets} WHERE id = $${keys.length + 1} RETURNING *`,
+    [...values, id]
+  );
+  return rows[0];
 }
 
-export function updateSSLMonitorAfterCheck(
+export async function updateSSLMonitorAfterCheck(
   id: string,
   status: string,
   daysRemaining: number | null,
   lastCheck: string,
   nextCheck: string,
   result?: SSLCheckResult
-): void {
-  const db = getDb();
-  db.prepare(
-    `UPDATE ssl_monitors SET last_status = ?, last_days_remaining = ?, last_check = ?, next_check = ?, last_result_json = ? WHERE id = ?`
-  ).run(status, daysRemaining, lastCheck, nextCheck, result ? JSON.stringify(result) : null, id);
+): Promise<void> {
+  await getPool().query(
+    `UPDATE ssl_monitors SET last_status = $1, last_days_remaining = $2, last_check = $3, next_check = $4, last_result_json = $5 WHERE id = $6`,
+    [status, daysRemaining, lastCheck, nextCheck, result ? JSON.stringify(result) : null, id]
+  );
 }
 
 // ─── SSL Check History ─────────────────────────────────────────────
 
-export function saveSSLCheckHistory(
+export async function saveSSLCheckHistory(
   id: string,
   monitorId: string,
   status: string,
   daysRemaining: number | null,
   result: SSLCheckResult
-): void {
-  const db = getDb();
-  db.prepare(
+): Promise<void> {
+  await getPool().query(
     `INSERT INTO ssl_check_history (id, monitor_id, checked_at, status, days_remaining, result_json)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(id, monitorId, result.checked_at, status, daysRemaining, JSON.stringify(result));
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [id, monitorId, result.checked_at, status, daysRemaining, JSON.stringify(result)]
+  );
 }
 
-export function getSSLCheckHistory(monitorId: string, limit = 20): SSLCheckHistoryRecord[] {
-  const db = getDb();
-  return db.prepare(
-    `SELECT * FROM ssl_check_history WHERE monitor_id = ? ORDER BY checked_at DESC LIMIT ?`
-  ).all(monitorId, limit) as SSLCheckHistoryRecord[];
+export async function getSSLCheckHistory(monitorId: string, limit = 20): Promise<SSLCheckHistoryRecord[]> {
+  const { rows } = await getPool().query(
+    `SELECT * FROM ssl_check_history WHERE monitor_id = $1 ORDER BY checked_at DESC LIMIT $2`,
+    [monitorId, limit]
+  );
+  return rows;
 }
 
 // ─── Backup ────────────────────────────────────────────────────────
 
 export async function backupDb(destPath: string): Promise<void> {
-  const db = getDb();
-  await db.backup(destPath);
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL not set");
+  await execAsync(`pg_dump "${url}" -f "${destPath}"`);
 }
 
 export function listBackups(): { filename: string; size: number; created_at: string }[] {
@@ -589,7 +544,7 @@ export function listBackups(): { filename: string; size: number; created_at: str
   if (!fs.existsSync(backupDir)) return [];
   return fs
     .readdirSync(backupDir)
-    .filter((f: string) => f.endsWith(".db"))
+    .filter((f: string) => f.endsWith(".sql"))
     .map((f: string) => {
       const stat = fs.statSync(path.join(backupDir, f));
       return { filename: f, size: stat.size, created_at: stat.mtime.toISOString() };
@@ -602,60 +557,63 @@ export function listBackups(): { filename: string; size: number; created_at: str
 
 // ─── API Tokens ────────────────────────────────────────────────────
 
-export function createApiToken(id: string, name: string, tokenPrefix: string): void {
-  const db = getDb();
+export async function createApiToken(id: string, name: string, tokenPrefix: string): Promise<void> {
   const now = new Date().toISOString();
-  db.prepare(
-    `INSERT INTO api_tokens (id, name, token_prefix, created_at) VALUES (?, ?, ?, ?)`
-  ).run(id, name, tokenPrefix, now);
+  await getPool().query(
+    `INSERT INTO api_tokens (id, name, token_prefix, created_at) VALUES ($1, $2, $3, $4)`,
+    [id, name, tokenPrefix, now]
+  );
 }
 
-export function listApiTokens(): { id: string; name: string; token_prefix: string; created_at: string; last_used: string | null }[] {
-  const db = getDb();
-  return db.prepare(`SELECT * FROM api_tokens ORDER BY created_at DESC`).all() as { id: string; name: string; token_prefix: string; created_at: string; last_used: string | null }[];
+export async function listApiTokens(): Promise<{ id: string; name: string; token_prefix: string; created_at: string; last_used: string | null }[]> {
+  const { rows } = await getPool().query(`SELECT * FROM api_tokens ORDER BY created_at DESC`);
+  return rows;
 }
 
-export function deleteApiToken(id: string): boolean {
-  const db = getDb();
-  const result = db.prepare(`DELETE FROM api_tokens WHERE id = ?`).run(id);
-  return result.changes > 0;
+export async function deleteApiToken(id: string): Promise<boolean> {
+  const result = await getPool().query(`DELETE FROM api_tokens WHERE id = $1`, [id]);
+  return (result.rowCount ?? 0) > 0;
 }
 
-export function touchApiToken(id: string): void {
-  const db = getDb();
-  db.prepare(`UPDATE api_tokens SET last_used = ? WHERE id = ?`).run(new Date().toISOString(), id);
+export async function touchApiToken(id: string): Promise<void> {
+  await getPool().query(
+    `UPDATE api_tokens SET last_used = $1 WHERE id = $2`,
+    [new Date().toISOString(), id]
+  );
 }
 
 // ─── App Monitors ──────────────────────────────────────────────────
 
-export function createAppMonitor(monitor: Omit<AppMonitorRecord, "last_check" | "next_check" | "last_status" | "last_login_status" | "last_response_ms">): AppMonitorRecord {
-  const db = getDb();
-  db.prepare(
+export async function createAppMonitor(monitor: Omit<AppMonitorRecord, "last_check" | "next_check" | "last_status" | "last_login_status" | "last_response_ms">): Promise<AppMonitorRecord> {
+  const { rows } = await getPool().query(
     `INSERT INTO app_monitors (id, name, url, username, password_enc, interval, cron_expr, enabled, created_at, notify_email)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(monitor.id, monitor.name, monitor.url, monitor.username, monitor.password_enc,
-        monitor.interval, monitor.cron_expr, monitor.enabled, monitor.created_at, monitor.notify_email ?? null);
-  return db.prepare(`SELECT * FROM app_monitors WHERE id = ?`).get(monitor.id) as AppMonitorRecord;
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     RETURNING *`,
+    [
+      monitor.id, monitor.name, monitor.url, monitor.username, monitor.password_enc,
+      monitor.interval, monitor.cron_expr, monitor.enabled, monitor.created_at, monitor.notify_email ?? null,
+    ]
+  );
+  return rows[0];
 }
 
-export function listAppMonitors(): AppMonitorRecord[] {
-  const db = getDb();
-  return db.prepare(`SELECT * FROM app_monitors ORDER BY created_at DESC`).all() as AppMonitorRecord[];
+export async function listAppMonitors(): Promise<AppMonitorRecord[]> {
+  const { rows } = await getPool().query(`SELECT * FROM app_monitors ORDER BY created_at DESC`);
+  return rows;
 }
 
-export function getAppMonitor(id: string): AppMonitorRecord | undefined {
-  const db = getDb();
-  return db.prepare(`SELECT * FROM app_monitors WHERE id = ?`).get(id) as AppMonitorRecord | undefined;
+export async function getAppMonitor(id: string): Promise<AppMonitorRecord | undefined> {
+  const { rows } = await getPool().query(`SELECT * FROM app_monitors WHERE id = $1`, [id]);
+  return rows[0];
 }
 
-export function deleteAppMonitor(id: string): boolean {
-  const db = getDb();
-  const result = db.prepare(`DELETE FROM app_monitors WHERE id = ?`).run(id);
-  db.prepare(`DELETE FROM app_check_history WHERE monitor_id = ?`).run(id);
-  return result.changes > 0;
+export async function deleteAppMonitor(id: string): Promise<boolean> {
+  const result = await getPool().query(`DELETE FROM app_monitors WHERE id = $1`, [id]);
+  await getPool().query(`DELETE FROM app_check_history WHERE monitor_id = $1`, [id]);
+  return (result.rowCount ?? 0) > 0;
 }
 
-export function updateAppMonitor(
+export async function updateAppMonitor(
   id: string,
   fields: {
     name?: string;
@@ -667,31 +625,34 @@ export function updateAppMonitor(
     enabled?: number;
     notify_email?: string | null;
   }
-): AppMonitorRecord | undefined {
-  const db = getDb();
-  const sets = Object.entries(fields).map(([k]) => `${k} = ?`).join(", ");
+): Promise<AppMonitorRecord | undefined> {
+  const keys = Object.keys(fields);
   const values = Object.values(fields);
-  db.prepare(`UPDATE app_monitors SET ${sets} WHERE id = ?`).run(...values, id);
-  return db.prepare(`SELECT * FROM app_monitors WHERE id = ?`).get(id) as AppMonitorRecord | undefined;
+  const sets = keys.map((k, i) => `${k} = $${i + 1}`).join(", ");
+  const { rows } = await getPool().query(
+    `UPDATE app_monitors SET ${sets} WHERE id = $${keys.length + 1} RETURNING *`,
+    [...values, id]
+  );
+  return rows[0];
 }
 
-export function updateAppMonitorAfterCheck(
+export async function updateAppMonitorAfterCheck(
   id: string,
   status: "up" | "down",
   responseMs: number,
   lastCheck: string,
   nextCheck: string,
   loginStatus?: "up" | "down" | null
-): void {
-  const db = getDb();
-  db.prepare(
-    `UPDATE app_monitors SET last_status = ?, last_response_ms = ?, last_check = ?, next_check = ?, last_login_status = ? WHERE id = ?`
-  ).run(status, responseMs, lastCheck, nextCheck, loginStatus ?? null, id);
+): Promise<void> {
+  await getPool().query(
+    `UPDATE app_monitors SET last_status = $1, last_response_ms = $2, last_check = $3, next_check = $4, last_login_status = $5 WHERE id = $6`,
+    [status, responseMs, lastCheck, nextCheck, loginStatus ?? null, id]
+  );
 }
 
 // ─── App Check History ─────────────────────────────────────────────
 
-export function saveAppCheckHistory(
+export async function saveAppCheckHistory(
   id: string,
   monitorId: string,
   checkedAt: string,
@@ -701,31 +662,33 @@ export function saveAppCheckHistory(
   error: string | null,
   checkType: "availability" | "login" = "login",
   responseDetail: string | null = null
-): void {
-  const db = getDb();
-  db.prepare(
+): Promise<void> {
+  await getPool().query(
     `INSERT INTO app_check_history (id, monitor_id, checked_at, status, response_ms, status_code, error, check_type, response_detail)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, monitorId, checkedAt, status, responseMs, statusCode, error ?? null, checkType, responseDetail);
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [id, monitorId, checkedAt, status, responseMs, statusCode, error ?? null, checkType, responseDetail]
+  );
 }
 
-export function getAppCheckHistory(monitorId: string, limit = 50): AppCheckHistoryRecord[] {
-  const db = getDb();
-  return db.prepare(
-    `SELECT * FROM app_check_history WHERE monitor_id = ? ORDER BY checked_at DESC LIMIT ?`
-  ).all(monitorId, limit) as AppCheckHistoryRecord[];
+export async function getAppCheckHistory(monitorId: string, limit = 50): Promise<AppCheckHistoryRecord[]> {
+  const { rows } = await getPool().query(
+    `SELECT * FROM app_check_history WHERE monitor_id = $1 ORDER BY checked_at DESC LIMIT $2`,
+    [monitorId, limit]
+  );
+  return rows;
 }
 
-export function getAppUptime(monitorId: string, hours = 24): number {
-  const db = getDb();
+export async function getAppUptime(monitorId: string, hours = 24): Promise<number> {
   const since = new Date(Date.now() - hours * 3600000).toISOString();
-  const row = db.prepare(
+  const { rows } = await getPool().query(
     `SELECT
        COUNT(*) AS total,
        SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) AS up_count
      FROM app_check_history
-     WHERE monitor_id = ? AND checked_at >= ?`
-  ).get(monitorId, since) as { total: number; up_count: number };
-  if (!row || row.total === 0) return -1;
-  return Math.round((row.up_count / row.total) * 100);
+     WHERE monitor_id = $1 AND checked_at >= $2`,
+    [monitorId, since]
+  );
+  const row = rows[0];
+  if (!row || Number(row.total) === 0) return -1;
+  return Math.round((Number(row.up_count) / Number(row.total)) * 100);
 }

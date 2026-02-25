@@ -9,7 +9,7 @@ export async function POST(
 ) {
   const { id } = await params;
 
-  const scan = getScan(id);
+  const scan = await getScan(id);
   if (!scan) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
@@ -18,7 +18,7 @@ export async function POST(
   }
 
   killScan(id);
-  failScan(id);
+  await failScan(id);
   emitProgress(id, { phase: "error", step: 0, total: 10, message: "Cancelled by user" });
 
   return NextResponse.json({ ok: true });

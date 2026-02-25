@@ -7,8 +7,10 @@ export async function POST(request: Request) {
     const { password } = await request.json();
     if (!password) return NextResponse.json({ error: "Password required" }, { status: 400 });
 
-    const hash = getSetting("auth_password_hash");
-    const salt = getSetting("auth_password_salt");
+    const [hash, salt] = await Promise.all([
+      getSetting("auth_password_hash"),
+      getSetting("auth_password_salt"),
+    ]);
 
     if (!hash || !salt) {
       return NextResponse.json({ error: "Authentication not configured. Use /api/auth/setup first." }, { status: 403 });

@@ -46,7 +46,7 @@ async function dispatchAppNotifications(
     timestamp: new Date().toISOString(),
   };
 
-  const configs = listNotificationConfigs();
+  const configs = await listNotificationConfigs();
   const webhookPromises = configs
     .filter((c) => c.enabled)
     .map((c) => {
@@ -140,7 +140,7 @@ async function dispatchAppNotifications(
 }
 
 async function executeAppCheck(monitorId: string): Promise<void> {
-  const monitor = getAppMonitor(monitorId);
+  const monitor = await getAppMonitor(monitorId);
   if (!monitor || !monitor.enabled) return;
 
   console.log(`[app-scheduler] Checking ${monitor.name} (${monitor.url})...`);
@@ -157,7 +157,7 @@ async function executeAppCheck(monitorId: string): Promise<void> {
 
   // ── Check 1: Availability (GET) ──
   const availResult = await checkAvailability(monitor.url);
-  saveAppCheckHistory(
+  await saveAppCheckHistory(
     randomUUID(), monitorId, availResult.checked_at,
     availResult.status, availResult.response_ms,
     availResult.status_code ?? null, availResult.error ?? null,
@@ -179,7 +179,7 @@ async function executeAppCheck(monitorId: string): Promise<void> {
       response_detail: "Skipped — site not reachable",
     };
   }
-  saveAppCheckHistory(
+  await saveAppCheckHistory(
     randomUUID(), monitorId, loginResult.checked_at,
     loginResult.status, loginResult.response_ms,
     loginResult.status_code ?? null, loginResult.error ?? null,
@@ -190,7 +190,7 @@ async function executeAppCheck(monitorId: string): Promise<void> {
   const overallStatus: "up" | "down" =
     availResult.status === "up" && loginResult.status === "up" ? "up" : "down";
 
-  updateAppMonitorAfterCheck(
+  await updateAppMonitorAfterCheck(
     monitorId, overallStatus, availResult.response_ms, now, nextRun, loginResult.status
   );
 
@@ -225,8 +225,8 @@ export function unregisterAppMonitor(id: string): void {
   }
 }
 
-export function initAppMonitorScheduler(): void {
-  const monitors = listAppMonitors();
+export async function initAppMonitorScheduler(): Promise<void> {
+  const monitors = await listAppMonitors();
   for (const monitor of monitors) {
     registerAppMonitor(monitor);
   }

@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     }
 
     const batchId = uuidv4();
-    createBatch(batchId, validUrls);
+    await createBatch(batchId, validUrls);
 
     // Process URLs with concurrency limit of 3
     const scanIds: string[] = [];
@@ -49,60 +49,61 @@ export async function POST(request: Request) {
       return new Promise((resolve) => {
         const scanId = uuidv4();
         scanIds.push(scanId);
-        createScan(scanId, url);
 
-        emitBatchProgress(batchId, {
-          completedUrls: completedCount,
-          failedUrls: failedCount,
-          totalUrls: validUrls.length,
-          currentUrl: url,
-          phase: "running",
+        createScan(scanId, url).then(() => {
+          emitBatchProgress(batchId, {
+            completedUrls: completedCount,
+            failedUrls: failedCount,
+            totalUrls: validUrls.length,
+            currentUrl: url,
+            phase: "running",
+          });
+
+          runScan(
+            url,
+            (progress) => {
+              emitProgress(scanId, progress);
+            },
+            async (report) => {
+              const score = calculateScore(report);
+              await completeScan(scanId, report, score);
+              emitProgress(scanId, { phase: "done", step: 10, total: 10, message: "Complete" });
+              captureScreenshot(url, scanId).catch(() => {});
+              completedCount++;
+              await updateBatchProgress(batchId, scanIds, completedCount, failedCount);
+              emitBatchProgress(batchId, {
+                completedUrls: completedCount,
+                failedUrls: failedCount,
+                totalUrls: validUrls.length,
+                currentUrl: url,
+                phase: completedCount + failedCount >= validUrls.length ? "done" : "running",
+              });
+              if (completedCount + failedCount >= validUrls.length) {
+                await completeBatch(batchId);
+              }
+              resolve();
+            },
+            async (error) => {
+              console.error(`Batch scan ${scanId} failed:`, error);
+              await failScan(scanId);
+              emitProgress(scanId, { phase: "error", step: 0, total: 10, message: error });
+              failedCount++;
+              await updateBatchProgress(batchId, scanIds, completedCount, failedCount);
+              emitBatchProgress(batchId, {
+                completedUrls: completedCount,
+                failedUrls: failedCount,
+                totalUrls: validUrls.length,
+                currentUrl: url,
+                phase: completedCount + failedCount >= validUrls.length ? "done" : "running",
+              });
+              if (completedCount + failedCount >= validUrls.length) {
+                await completeBatch(batchId);
+              }
+              resolve();
+            },
+            cookies
+          );
         });
-
-        runScan(
-          url,
-          (progress) => {
-            emitProgress(scanId, progress);
-          },
-          (report) => {
-            const score = calculateScore(report);
-            completeScan(scanId, report, score);
-            emitProgress(scanId, { phase: "done", step: 10, total: 10, message: "Complete" });
-            captureScreenshot(url, scanId).catch(() => {});
-            completedCount++;
-            updateBatchProgress(batchId, scanIds, completedCount, failedCount);
-            emitBatchProgress(batchId, {
-              completedUrls: completedCount,
-              failedUrls: failedCount,
-              totalUrls: validUrls.length,
-              currentUrl: url,
-              phase: completedCount + failedCount >= validUrls.length ? "done" : "running",
-            });
-            if (completedCount + failedCount >= validUrls.length) {
-              completeBatch(batchId);
-            }
-            resolve();
-          },
-          (error) => {
-            console.error(`Batch scan ${scanId} failed:`, error);
-            failScan(scanId);
-            emitProgress(scanId, { phase: "error", step: 0, total: 10, message: error });
-            failedCount++;
-            updateBatchProgress(batchId, scanIds, completedCount, failedCount);
-            emitBatchProgress(batchId, {
-              completedUrls: completedCount,
-              failedUrls: failedCount,
-              totalUrls: validUrls.length,
-              currentUrl: url,
-              phase: completedCount + failedCount >= validUrls.length ? "done" : "running",
-            });
-            if (completedCount + failedCount >= validUrls.length) {
-              completeBatch(batchId);
-            }
-            resolve();
-          },
-          cookies
-        );
       });
     };
 
