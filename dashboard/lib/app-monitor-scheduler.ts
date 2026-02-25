@@ -161,7 +161,7 @@ async function executeAppCheck(monitorId: string): Promise<void> {
     randomUUID(), monitorId, availResult.checked_at,
     availResult.status, availResult.response_ms,
     availResult.status_code ?? null, availResult.error ?? null,
-    "availability"
+    "availability", availResult.response_detail ?? null
   );
 
   // ── Check 2: Login (POST) — always run ──
@@ -176,13 +176,14 @@ async function executeAppCheck(monitorId: string): Promise<void> {
       response_ms: 0,
       status_code: null,
       error: "Skipped — site not reachable",
+      response_detail: "Skipped — site not reachable",
     };
   }
   saveAppCheckHistory(
     randomUUID(), monitorId, loginResult.checked_at,
     loginResult.status, loginResult.response_ms,
     loginResult.status_code ?? null, loginResult.error ?? null,
-    "login"
+    "login", loginResult.response_detail ?? null
   );
 
   // Overall: UP only if both pass

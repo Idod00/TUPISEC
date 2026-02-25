@@ -40,22 +40,35 @@ export async function checkAvailability(url: string): Promise<AppCheckResult> {
       },
     });
     clearTimeout(timer);
+
+    // Build a concise detail string with key server response metadata
+    const detailParts: string[] = [`HTTP ${res.status}`];
+    const server = res.headers.get("server");
+    if (server) detailParts.push(`Server: ${server}`);
+    const ct = res.headers.get("content-type")?.split(";")[0].trim();
+    if (ct) detailParts.push(ct);
+    if (res.url && res.url !== url) detailParts.push(`→ ${res.url}`);
+    const response_detail = detailParts.join(" · ");
+
     return {
       url,
       checked_at: now,
       status: "up",   // any HTTP response = server is reachable
       response_ms: Date.now() - start,
       status_code: res.status,
+      response_detail,
     };
   } catch (err) {
     clearTimeout(timer);
+    const message = err instanceof Error ? err.message : String(err);
     return {
       url,
       checked_at: now,
       status: "down",
       response_ms: Date.now() - start,
       status_code: null,
-      error: err instanceof Error ? err.message : String(err),
+      error: message,
+      response_detail: `Error: ${message}`,
     };
   }
 }
@@ -101,17 +114,20 @@ export async function checkApp(
           response_ms: Date.now() - start,
           status_code: getRes.status,
           error: `HTTP ${getRes.status} on GET`,
+          response_detail: `GET HTTP ${getRes.status} · Login page unreachable`,
         };
       }
     } catch (err) {
       clearTimeout(getTimer);
+      const message = err instanceof Error ? err.message : String(err);
       return {
         url,
         checked_at: now,
         status: "down",
         response_ms: Date.now() - start,
         status_code: null,
-        error: err instanceof Error ? err.message : String(err),
+        error: message,
+        response_detail: `GET Error: ${message}`,
       };
     }
 
@@ -202,17 +218,22 @@ export async function checkApp(
 
       // Redirect after POST → login accepted ✓
       if ([301, 302, 303, 307, 308].includes(statusCode)) {
+        const location = postRes.headers.get("location") ?? "";
+        const response_detail = `POST HTTP ${statusCode}${location ? ` → ${location}` : ""} · Login accepted (redirect)`;
         return {
           url,
           checked_at: now,
           status: "up",
           response_ms: responseMs,
           status_code: statusCode,
+          response_detail,
         };
       }
 
       if (statusCode === 200) {
         const responseHtml = await postRes.text().catch(() => "");
+        const server = postRes.headers.get("server") ?? "";
+        const serverPart = server ? ` · Server: ${server}` : "";
         // No password field in response → past the login page
         if (
           !responseHtml.includes('type="password"') &&
@@ -224,6 +245,7 @@ export async function checkApp(
             status: "up",
             response_ms: responseMs,
             status_code: statusCode,
+            response_detail: `POST HTTP 200${serverPart} · Login accepted (no password field in response)`,
           };
         }
         return {
@@ -233,6 +255,7 @@ export async function checkApp(
           response_ms: responseMs,
           status_code: statusCode,
           error: "Login failed — still on login page after POST",
+          response_detail: `POST HTTP 200${serverPart} · Login rejected (password field still present)`,
         };
       }
 
@@ -243,26 +266,31 @@ export async function checkApp(
         response_ms: responseMs,
         status_code: statusCode,
         error: `Unexpected HTTP ${statusCode} after POST to ${postUrl}`,
+        response_detail: `POST HTTP ${statusCode} from ${postUrl}`,
       };
     } catch (err) {
       clearTimeout(postTimer);
+      const message = err instanceof Error ? err.message : String(err);
       return {
         url,
         checked_at: now,
         status: "down",
         response_ms: Date.now() - start,
         status_code: loginStatus || null,
-        error: err instanceof Error ? err.message : String(err),
+        error: message,
+        response_detail: `POST Error: ${message}`,
       };
     }
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     return {
       url,
       checked_at: now,
       status: "down",
       response_ms: Date.now() - start,
       status_code: null,
-      error: err instanceof Error ? err.message : String(err),
+      error: message,
+      response_detail: `Error: ${message}`,
     };
   }
 }

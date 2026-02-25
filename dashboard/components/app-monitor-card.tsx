@@ -279,15 +279,15 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled,
           </div>
         </div>
 
-        {/* Error messages */}
-        {lastAvail?.status === "down" && lastAvail.error && (
-          <p className="text-xs text-blue-400 bg-blue-500/10 rounded-md px-2 py-1 mb-2 font-mono">
-            GET: {lastAvail.error}
+        {/* Live check details */}
+        {lastAvail?.response_detail && (
+          <p className={`text-xs rounded-md px-2 py-1 mb-1 font-mono truncate ${lastAvail.status === "up" ? "bg-blue-500/10 text-blue-300" : "bg-red-500/10 text-red-400"}`}>
+            {lastAvail.response_detail}
           </p>
         )}
-        {lastLogin?.status === "down" && lastLogin.error && (
-          <p className="text-xs text-red-400 bg-red-500/10 rounded-md px-2 py-1 mb-2 font-mono">
-            POST: {lastLogin.error}
+        {lastLogin?.response_detail && (
+          <p className={`text-xs rounded-md px-2 py-1 mb-2 font-mono truncate ${lastLogin.status === "up" ? "bg-green-500/10 text-green-300" : "bg-red-500/10 text-red-400"}`}>
+            {lastLogin.response_detail}
           </p>
         )}
 
@@ -351,29 +351,31 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled,
                 {/* Dots */}
                 <HistoryDots history={history} />
                 {/* Detailed rows */}
-                <div className="space-y-1 max-h-52 overflow-y-auto pr-1 mt-1">
+                <div className="space-y-1 max-h-64 overflow-y-auto pr-1 mt-1">
                   {history.slice(0, 40).map((entry) => (
-                    <div key={entry.id} className="flex items-center gap-2 text-xs rounded-md bg-muted/30 px-2 py-1.5">
-                      <CheckTypeBadge type={entry.check_type ?? "login"} />
-                      <span className={cn(
-                        "font-semibold w-8 flex-shrink-0",
-                        entry.status === "up" ? (entry.check_type === "availability" ? "text-blue-400" : "text-green-400") : "text-red-400"
-                      )}>
-                        {entry.status.toUpperCase()}
-                      </span>
-                      <span className="text-muted-foreground tabular-nums flex-shrink-0">
-                        {new Date(entry.checked_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                      </span>
-                      <span className="text-muted-foreground tabular-nums w-12 flex-shrink-0">
-                        {entry.response_ms != null ? `${entry.response_ms}ms` : "—"}
-                      </span>
-                      {entry.status_code != null && (
-                        <span className="text-muted-foreground/60 tabular-nums flex-shrink-0">
-                          HTTP {entry.status_code}
+                    <div key={entry.id} className="rounded-md bg-muted/30 px-2 py-1.5 text-xs space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <CheckTypeBadge type={entry.check_type ?? "login"} />
+                        <span className={cn(
+                          "font-semibold w-8 flex-shrink-0",
+                          entry.status === "up" ? (entry.check_type === "availability" ? "text-blue-400" : "text-green-400") : "text-red-400"
+                        )}>
+                          {entry.status.toUpperCase()}
                         </span>
+                        <span className="text-muted-foreground tabular-nums flex-shrink-0">
+                          {new Date(entry.checked_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                        </span>
+                        <span className="text-muted-foreground tabular-nums w-14 flex-shrink-0">
+                          {entry.response_ms != null ? `${entry.response_ms}ms` : "—"}
+                        </span>
+                      </div>
+                      {entry.response_detail && (
+                        <p className="font-mono text-[10px] text-muted-foreground/80 truncate pl-1">
+                          {entry.response_detail}
+                        </p>
                       )}
-                      {entry.error && (
-                        <span className="text-red-400 truncate min-w-0">{entry.error}</span>
+                      {!entry.response_detail && entry.error && (
+                        <p className="text-[10px] text-red-400 truncate pl-1">{entry.error}</p>
                       )}
                     </div>
                   ))}

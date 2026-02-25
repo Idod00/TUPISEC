@@ -221,6 +221,7 @@ export interface AppCheckResult {
   response_ms: number;
   status_code: number | null;
   error?: string;
+  response_detail?: string;
 }
 
 export interface AppCheckHistoryRecord {
@@ -232,4 +233,5 @@ export interface AppCheckHistoryRecord {
   status_code: number | null;
   error: string | null;
   check_type: "availability" | "login";
+  response_detail: string | null;
 }

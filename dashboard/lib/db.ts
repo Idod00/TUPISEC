@@ -209,6 +209,9 @@ function getDb(): Database.Database {
     if (!appHistCols.some((c) => c.name === "check_type")) {
       _db.exec("ALTER TABLE app_check_history ADD COLUMN check_type TEXT NOT NULL DEFAULT 'login'");
     }
+    if (!appHistCols.some((c) => c.name === "response_detail")) {
+      _db.exec("ALTER TABLE app_check_history ADD COLUMN response_detail TEXT");
+    }
   }
   return _db;
 }
@@ -696,13 +699,14 @@ export function saveAppCheckHistory(
   responseMs: number | null,
   statusCode: number | null,
   error: string | null,
-  checkType: "availability" | "login" = "login"
+  checkType: "availability" | "login" = "login",
+  responseDetail: string | null = null
 ): void {
   const db = getDb();
   db.prepare(
-    `INSERT INTO app_check_history (id, monitor_id, checked_at, status, response_ms, status_code, error, check_type)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, monitorId, checkedAt, status, responseMs, statusCode, error ?? null, checkType);
+    `INSERT INTO app_check_history (id, monitor_id, checked_at, status, response_ms, status_code, error, check_type, response_detail)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, monitorId, checkedAt, status, responseMs, statusCode, error ?? null, checkType, responseDetail);
 }
 
 export function getAppCheckHistory(monitorId: string, limit = 50): AppCheckHistoryRecord[] {
