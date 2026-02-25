@@ -1,24 +1,22 @@
 import type { AppCheckResult } from "./types";
 
-function buildAbsoluteUrl(base: string, action: string): string {
-  if (!action) return base;
+function buildAbsoluteUrl(base: string, href: string): string {
+  if (!href) return base;
   try {
-    return new URL(action, base).toString();
+    return new URL(href, base).toString();
   } catch {
     return base;
   }
 }
 
-/** Extract cookies from a fetch Response to send in the next request */
+/** Extract cookies from a fetch Response to forward in the next request */
 function extractCookies(res: Response): string {
   try {
-    // getSetCookie() returns each Set-Cookie header as a separate string (Node 18+)
     if (typeof (res.headers as { getSetCookie?: () => string[] }).getSetCookie === "function") {
       const cookies = (res.headers as { getSetCookie: () => string[] }).getSetCookie();
       return cookies.map((c) => c.split(";")[0]).join("; ");
     }
   } catch {}
-  // Fallback: headers.get('set-cookie') (may be comma-joined)
   const raw = res.headers.get("set-cookie") ?? "";
   if (!raw) return "";
   return raw
@@ -36,13 +34,13 @@ export async function checkApp(
   const now = new Date().toISOString();
 
   try {
-    // ── Step 1: GET login page (follow redirects to reach the actual login form) ──
+    // ── Step 1: GET login page ──────────────────────────────────────
     const getController = new AbortController();
     const getTimer = setTimeout(() => getController.abort(), 15000);
 
     let loginHtml = "";
     let loginStatus = 0;
-    let finalUrl = url;   // URL after all redirects — critical for APEX relative form actions
+    let finalUrl = url;
     let sessionCookies = "";
 
     try {
@@ -56,9 +54,7 @@ export async function checkApp(
       });
       clearTimeout(getTimer);
       loginStatus = getRes.status;
-      // Use the final URL (after redirects) so relative form actions resolve correctly
       finalUrl = getRes.url || url;
-      // Capture session cookies (APEX requires these on the POST)
       sessionCookies = extractCookies(getRes);
       loginHtml = await getRes.text().catch(() => "");
 
@@ -84,41 +80,36 @@ export async function checkApp(
       };
     }
 
-    // ── Step 2: Parse login form ──
-    let postUrl = finalUrl;
-    const formParams = new URLSearchParams();
-
-    // Extract form action — use finalUrl as base (not the original url)
-    const actionMatch = loginHtml.match(/action=["']([^"']+)["']/i);
-    if (actionMatch) {
-      postUrl = buildAbsoluteUrl(finalUrl, actionMatch[1]);
+    // ── Step 2: Determine the effective base URL ────────────────────
+    // HTML <base href="..."> overrides the document base for relative URLs.
+    // APEX always emits <base href="/ords/" /> — ignoring it causes 404.
+    let baseUrl = finalUrl;
+    const baseTagMatch = loginHtml.match(/<base[^>]+href=["']([^"']*)["']/i);
+    if (baseTagMatch) {
+      baseUrl = buildAbsoluteUrl(finalUrl, baseTagMatch[1]);
     }
 
-    // Collect ALL hidden inputs
-    const hiddenRe =
-      /<input[^>]+type=["']hidden["'][^>]*>/gi;
-    for (const inputTag of loginHtml.matchAll(hiddenRe)) {
+    // ── Step 3: Parse login form ────────────────────────────────────
+    let postUrl = baseUrl;
+    const formParams = new URLSearchParams();
+
+    // Form action — resolve relative to the effective base URL
+    const actionMatch = loginHtml.match(/action=["']([^"']+)["']/i);
+    if (actionMatch) {
+      postUrl = buildAbsoluteUrl(baseUrl, actionMatch[1]);
+    }
+
+    // Collect all hidden inputs
+    for (const inputTag of loginHtml.matchAll(/<input[^>]+type=["']hidden["'][^>]*>/gi)) {
       const tag = inputTag[0];
       const nameM = tag.match(/name=["']([^"']*)["']/i);
       const valM  = tag.match(/value=["']([^"']*)["']/i);
       if (nameM && valM) formParams.set(nameM[1], valM[1]);
     }
-    // Also handle hidden inputs where value comes before name
-    const hiddenRe2 = /<input[^>]+type=["']hidden["'][^>]*>/gi;
-    for (const inputTag of loginHtml.matchAll(hiddenRe2)) {
-      const tag = inputTag[0];
-      const nameM = tag.match(/name=["']([^"']*)["']/i);
-      const valM  = tag.match(/value=["']([^"']*)["']/i);
-      if (nameM && !formParams.has(nameM[1]) && valM) {
-        formParams.set(nameM[1], valM[1]);
-      }
-    }
 
     // Detect username field name (text or email input)
     let usernameField = "p_username";
-    const userTagMatch = loginHtml.match(
-      /<input[^>]+type=["'](text|email)["'][^>]*>/i
-    );
+    const userTagMatch = loginHtml.match(/<input[^>]+type=["'](text|email)["'][^>]*>/i);
     if (userTagMatch) {
       const nameM = userTagMatch[0].match(/name=["']([^"']*)["']/i);
       if (nameM) usernameField = nameM[1];
@@ -126,9 +117,7 @@ export async function checkApp(
 
     // Detect password field name
     let passwordField = "p_password";
-    const passTagMatch = loginHtml.match(
-      /<input[^>]+type=["']password["'][^>]*>/i
-    );
+    const passTagMatch = loginHtml.match(/<input[^>]+type=["']password["'][^>]*>/i);
     if (passTagMatch) {
       const nameM = passTagMatch[0].match(/name=["']([^"']*)["']/i);
       if (nameM) passwordField = nameM[1];
@@ -137,7 +126,19 @@ export async function checkApp(
     formParams.set(usernameField, username);
     formParams.set(passwordField, password);
 
-    // ── Step 3: POST credentials ──
+    // ── APEX-specific: set p_request=LOGIN ─────────────────────────
+    // APEX login pages use apex.submit({request:'LOGIN'}) via JS.
+    // The hidden p_request field is empty in the HTML; we must set it.
+    // Detection: APEX pages have p_flow_id or p_instance hidden fields.
+    const isApex =
+      formParams.has("p_flow_id") ||
+      formParams.has("p_instance") ||
+      loginHtml.includes("wwv_flow");
+    if (isApex && formParams.has("p_request")) {
+      formParams.set("p_request", "LOGIN");
+    }
+
+    // ── Step 4: POST credentials ────────────────────────────────────
     const postController = new AbortController();
     const postTimer = setTimeout(() => postController.abort(), 15000);
 
@@ -147,7 +148,6 @@ export async function checkApp(
       "Accept": "text/html,application/xhtml+xml,*/*",
       "Referer": finalUrl,
     };
-    // !! Pass session cookies — required for APEX and most session-based apps
     if (sessionCookies) {
       postHeaders["Cookie"] = sessionCookies;
     }
@@ -157,7 +157,7 @@ export async function checkApp(
         method: "POST",
         headers: postHeaders,
         body: formParams.toString(),
-        redirect: "manual",   // catch the 302 redirect ourselves
+        redirect: "manual",
         signal: postController.signal,
       });
       clearTimeout(postTimer);
@@ -165,7 +165,7 @@ export async function checkApp(
       const responseMs = Date.now() - start;
       const statusCode = postRes.status;
 
-      // Redirect → login accepted ✓
+      // Redirect after POST → login accepted ✓
       if ([301, 302, 303, 307, 308].includes(statusCode)) {
         return {
           url,
@@ -178,7 +178,7 @@ export async function checkApp(
 
       if (statusCode === 200) {
         const responseHtml = await postRes.text().catch(() => "");
-        // No password field in response → we're past the login page
+        // No password field in response → past the login page
         if (
           !responseHtml.includes('type="password"') &&
           !responseHtml.includes("type='password'")
@@ -191,7 +191,6 @@ export async function checkApp(
             status_code: statusCode,
           };
         }
-        // Still has password field → login failed
         return {
           url,
           checked_at: now,
@@ -208,7 +207,7 @@ export async function checkApp(
         status: "down",
         response_ms: responseMs,
         status_code: statusCode,
-        error: `Unexpected HTTP ${statusCode} after POST`,
+        error: `Unexpected HTTP ${statusCode} after POST to ${postUrl}`,
       };
     } catch (err) {
       clearTimeout(postTimer);
