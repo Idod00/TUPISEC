@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import path from "path";
-import type { ScanRecord, ScanReport, BatchRecord, FindingStatusRecord, FindingStatusValue, ScheduleRecord, NotificationConfig, EnrichmentData, SSLMonitorRecord, SSLCheckHistoryRecord, SSLCheckResult } from "./types";
+import type { ScanRecord, ScanReport, BatchRecord, FindingStatusRecord, FindingStatusValue, ScheduleRecord, NotificationConfig, EnrichmentData, SSLMonitorRecord, SSLCheckHistoryRecord, SSLCheckResult, AppMonitorRecord, AppCheckHistoryRecord } from "./types";
 
 const DB_PATH = path.join(process.cwd(), "data", "tupisec.db");
 
@@ -163,6 +163,39 @@ function getDb(): Database.Database {
         token_prefix TEXT NOT NULL,
         created_at TEXT NOT NULL,
         last_used TEXT
+      );
+    `);
+
+    // App monitors table
+    _db.exec(`
+      CREATE TABLE IF NOT EXISTS app_monitors (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        url TEXT NOT NULL,
+        username TEXT NOT NULL,
+        password_enc TEXT NOT NULL,
+        interval TEXT NOT NULL,
+        cron_expr TEXT NOT NULL,
+        enabled INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL,
+        last_check TEXT,
+        next_check TEXT,
+        last_status TEXT,
+        last_response_ms INTEGER,
+        notify_email TEXT
+      );
+    `);
+
+    // App check history table
+    _db.exec(`
+      CREATE TABLE IF NOT EXISTS app_check_history (
+        id TEXT PRIMARY KEY,
+        monitor_id TEXT NOT NULL,
+        checked_at TEXT NOT NULL,
+        status TEXT NOT NULL,
+        response_ms INTEGER,
+        status_code INTEGER,
+        error TEXT
       );
     `);
   }
@@ -577,4 +610,105 @@ export function deleteApiToken(id: string): boolean {
 export function touchApiToken(id: string): void {
   const db = getDb();
   db.prepare(`UPDATE api_tokens SET last_used = ? WHERE id = ?`).run(new Date().toISOString(), id);
+}
+
+// ─── App Monitors ──────────────────────────────────────────────────
+
+export function createAppMonitor(monitor: Omit<AppMonitorRecord, "last_check" | "next_check" | "last_status" | "last_response_ms">): AppMonitorRecord {
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO app_monitors (id, name, url, username, password_enc, interval, cron_expr, enabled, created_at, notify_email)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(monitor.id, monitor.name, monitor.url, monitor.username, monitor.password_enc,
+        monitor.interval, monitor.cron_expr, monitor.enabled, monitor.created_at, monitor.notify_email ?? null);
+  return db.prepare(`SELECT * FROM app_monitors WHERE id = ?`).get(monitor.id) as AppMonitorRecord;
+}
+
+export function listAppMonitors(): AppMonitorRecord[] {
+  const db = getDb();
+  return db.prepare(`SELECT * FROM app_monitors ORDER BY created_at DESC`).all() as AppMonitorRecord[];
+}
+
+export function getAppMonitor(id: string): AppMonitorRecord | undefined {
+  const db = getDb();
+  return db.prepare(`SELECT * FROM app_monitors WHERE id = ?`).get(id) as AppMonitorRecord | undefined;
+}
+
+export function deleteAppMonitor(id: string): boolean {
+  const db = getDb();
+  const result = db.prepare(`DELETE FROM app_monitors WHERE id = ?`).run(id);
+  db.prepare(`DELETE FROM app_check_history WHERE monitor_id = ?`).run(id);
+  return result.changes > 0;
+}
+
+export function updateAppMonitor(
+  id: string,
+  fields: {
+    name?: string;
+    url?: string;
+    username?: string;
+    password_enc?: string;
+    interval?: string;
+    cron_expr?: string;
+    enabled?: number;
+    notify_email?: string | null;
+  }
+): AppMonitorRecord | undefined {
+  const db = getDb();
+  const sets = Object.entries(fields).map(([k]) => `${k} = ?`).join(", ");
+  const values = Object.values(fields);
+  db.prepare(`UPDATE app_monitors SET ${sets} WHERE id = ?`).run(...values, id);
+  return db.prepare(`SELECT * FROM app_monitors WHERE id = ?`).get(id) as AppMonitorRecord | undefined;
+}
+
+export function updateAppMonitorAfterCheck(
+  id: string,
+  status: "up" | "down",
+  responseMs: number,
+  lastCheck: string,
+  nextCheck: string
+): void {
+  const db = getDb();
+  db.prepare(
+    `UPDATE app_monitors SET last_status = ?, last_response_ms = ?, last_check = ?, next_check = ? WHERE id = ?`
+  ).run(status, responseMs, lastCheck, nextCheck, id);
+}
+
+// ─── App Check History ─────────────────────────────────────────────
+
+export function saveAppCheckHistory(
+  id: string,
+  monitorId: string,
+  checkedAt: string,
+  status: "up" | "down",
+  responseMs: number | null,
+  statusCode: number | null,
+  error: string | null
+): void {
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO app_check_history (id, monitor_id, checked_at, status, response_ms, status_code, error)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, monitorId, checkedAt, status, responseMs, statusCode, error ?? null);
+}
+
+export function getAppCheckHistory(monitorId: string, limit = 50): AppCheckHistoryRecord[] {
+  const db = getDb();
+  return db.prepare(
+    `SELECT * FROM app_check_history WHERE monitor_id = ? ORDER BY checked_at DESC LIMIT ?`
+  ).all(monitorId, limit) as AppCheckHistoryRecord[];
+}
+
+export function getAppUptime(monitorId: string, hours = 24): number {
+  const db = getDb();
+  const since = new Date(Date.now() - hours * 3600000).toISOString();
+  const row = db.prepare(
+    `SELECT
+       COUNT(*) AS total,
+       SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) AS up_count
+     FROM app_check_history
+     WHERE monitor_id = ? AND checked_at >= ?`
+  ).get(monitorId, since) as { total: number; up_count: number };
+  if (!row || row.total === 0) return -1;
+  return Math.round((row.up_count / row.total) * 100);
 }

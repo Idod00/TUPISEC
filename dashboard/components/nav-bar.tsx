@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Shield, History, Home, Layers, Clock, Settings2, LockKeyhole, Sun, Moon, LogOut } from "lucide-react";
+import { Shield, History, Home, Layers, Clock, Settings2, LockKeyhole, Sun, Moon, LogOut, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/context";
 import { useTheme } from "@/lib/theme/context";
@@ -15,6 +15,7 @@ const links: { href: string; key: TranslationKey; icon: React.ElementType }[] = 
   { href: "/batch", key: "nav.batch", icon: Layers },
   { href: "/schedules", key: "nav.schedules", icon: Clock },
   { href: "/ssl", key: "nav.ssl", icon: LockKeyhole },
+  { href: "/monitors", key: "nav.monitors", icon: Activity },
   { href: "/settings", key: "nav.settings", icon: Settings2 },
 ];
 

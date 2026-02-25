@@ -8,6 +8,7 @@ export const translations = {
     "nav.batch": "Batch",
     "nav.schedules": "Schedules",
     "nav.ssl": "SSL",
+    "nav.monitors": "Monitors",
     "nav.settings": "Settings",
 
     // Home
@@ -261,6 +262,27 @@ export const translations = {
     "fuzz.errorPattern": "Disclosure",
     "fuzz.count": "{n} parameter{s} triggered a response change",
 
+    // Web App Monitor
+    "monitors.title": "Web App Monitor",
+    "monitors.subtitle": "Monitors login availability of your web apps",
+    "monitors.addMonitor": "Add Monitor",
+    "monitors.name": "App Name",
+    "monitors.url": "Login URL",
+    "monitors.username": "Username",
+    "monitors.password": "Password",
+    "monitors.interval": "Check Interval",
+    "monitors.alertEmail": "Alert Email (optional)",
+    "monitors.checkNow": "Check Now",
+    "monitors.status.up": "UP",
+    "monitors.status.down": "DOWN",
+    "monitors.uptime24h": "24h Uptime",
+    "monitors.responseMs": "Response",
+    "monitors.none": "No monitors configured.",
+    "monitors.lastCheck": "Last check",
+    "monitors.nextCheck": "Next check",
+    "monitors.enable": "Enable",
+    "monitors.disable": "Disable",
+
     // Footer
     "footer.text": "TupiSec Scanner — Web Security Analysis Framework",
 
@@ -281,6 +303,7 @@ export const translations = {
     "nav.batch": "Masivo",
     "nav.schedules": "Programados",
     "nav.ssl": "SSL",
+    "nav.monitors": "Monitores",
     "nav.settings": "Ajustes",
 
     // Home
@@ -533,6 +556,27 @@ export const translations = {
     "fuzz.sizeDelta": "Δ Tamaño",
     "fuzz.errorPattern": "Divulgación",
     "fuzz.count": "{n} parámetro{s} generó cambios en la respuesta",
+
+    // Web App Monitor
+    "monitors.title": "Monitor de Aplicaciones Web",
+    "monitors.subtitle": "Monitorea la disponibilidad de tus apps",
+    "monitors.addMonitor": "Agregar Monitor",
+    "monitors.name": "Nombre de la App",
+    "monitors.url": "URL de Login",
+    "monitors.username": "Usuario",
+    "monitors.password": "Contraseña",
+    "monitors.interval": "Intervalo",
+    "monitors.alertEmail": "Email de Alerta (opcional)",
+    "monitors.checkNow": "Verificar Ahora",
+    "monitors.status.up": "UP",
+    "monitors.status.down": "DOWN",
+    "monitors.uptime24h": "Uptime 24h",
+    "monitors.responseMs": "Respuesta",
+    "monitors.none": "Sin monitores configurados.",
+    "monitors.lastCheck": "Último check",
+    "monitors.nextCheck": "Próximo check",
+    "monitors.enable": "Habilitar",
+    "monitors.disable": "Deshabilitar",
 
     // Footer
     "footer.text": "TupiSec Scanner — Framework de Análisis de Seguridad Web",

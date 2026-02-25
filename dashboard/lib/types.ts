@@ -193,3 +193,41 @@ export interface SSLCheckHistoryRecord {
   days_remaining: number | null;
   result_json: string;
 }
+
+export type AppMonitorInterval = "5min" | "15min" | "30min" | "1h" | "6h" | "1d";
+
+export interface AppMonitorRecord {
+  id: string;
+  name: string;
+  url: string;
+  username: string;
+  password_enc: string;
+  interval: AppMonitorInterval;
+  cron_expr: string;
+  enabled: number;
+  created_at: string;
+  last_check: string | null;
+  next_check: string | null;
+  last_status: "up" | "down" | null;
+  last_response_ms: number | null;
+  notify_email: string | null;
+}
+
+export interface AppCheckResult {
+  url: string;
+  checked_at: string;
+  status: "up" | "down";
+  response_ms: number;
+  status_code: number | null;
+  error?: string;
+}
+
+export interface AppCheckHistoryRecord {
+  id: string;
+  monitor_id: string;
+  checked_at: string;
+  status: "up" | "down";
+  response_ms: number | null;
+  status_code: number | null;
+  error: string | null;
+}
