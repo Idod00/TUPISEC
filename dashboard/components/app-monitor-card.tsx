@@ -3,26 +3,47 @@
 import { useState } from "react";
 import {
   Activity, Trash2, RefreshCw, Loader2,
-  CheckCircle, XCircle, Clock, Calendar,
+  CheckCircle, XCircle, Clock,
   ExternalLink, ChevronDown, ChevronUp, History,
-  Power,
+  Power, Pencil, Save, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/context";
-import type { AppMonitorRecord, AppCheckResult, AppCheckHistoryRecord } from "@/lib/types";
+import type { AppMonitorRecord, AppCheckResult, AppCheckHistoryRecord, AppMonitorInterval } from "@/lib/types";
+
+type SafeMonitor = Omit<AppMonitorRecord, "password_enc">;
 
 interface Props {
-  monitor: Omit<AppMonitorRecord, "password_enc">;
+  monitor: SafeMonitor;
   onDelete: (id: string) => void;
   onCheckNow: (id: string) => Promise<{ status: string; result: AppCheckResult } | null>;
   onToggleEnabled: (id: string, enabled: boolean) => Promise<void>;
+  onUpdate: (id: string, fields: {
+    name?: string;
+    url?: string;
+    username?: string;
+    password?: string;
+    interval?: AppMonitorInterval;
+    notify_email?: string | null;
+    enabled?: number;
+  }) => Promise<SafeMonitor | null>;
 }
+
+const INTERVAL_OPTIONS: { value: AppMonitorInterval; label: string }[] = [
+  { value: "5min",  label: "5 min" },
+  { value: "15min", label: "15 min" },
+  { value: "30min", label: "30 min" },
+  { value: "1h",    label: "1 hora" },
+  { value: "6h",    label: "6 horas" },
+  { value: "1d",    label: "Diario" },
+];
 
 function UptimeDots({ history }: { history: AppCheckHistoryRecord[] }) {
   const dots = history.slice(0, 20).reverse();
   return (
-    <div className="flex gap-0.5 items-center">
+    <div className="flex gap-0.5 items-center flex-wrap">
       {dots.map((h) => (
         <div
           key={h.id}
@@ -40,11 +61,12 @@ function UptimeDots({ history }: { history: AppCheckHistoryRecord[] }) {
   );
 }
 
-export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled }: Props) {
+export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled, onUpdate }: Props) {
   const { t } = useI18n();
 
   const [checking, setChecking] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [currentMonitor, setCurrentMonitor] = useState(monitor);
   const [latestResult, setLatestResult] = useState<AppCheckResult | null>(null);
   const [latestStatus, setLatestStatus] = useState<"up" | "down" | null>(monitor.last_status);
@@ -53,6 +75,17 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled 
   const [history, setHistory] = useState<AppCheckHistoryRecord[] | null>(null);
   const [uptime24h, setUptime24h] = useState<number>(-1);
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: monitor.name,
+    url: monitor.url,
+    username: monitor.username,
+    password: "",          // blank = don't change
+    interval: monitor.interval,
+    notify_email: monitor.notify_email ?? "",
+    enabled: monitor.enabled === 1,
+  });
 
   const loadHistory = async () => {
     if (history !== null) return;
@@ -82,6 +115,12 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled 
       if (res) {
         setLatestResult(res.result);
         setLatestStatus(res.status as "up" | "down");
+        setCurrentMonitor((m) => ({
+          ...m,
+          last_status: res.status as "up" | "down",
+          last_response_ms: res.result.response_ms,
+          last_check: res.result.checked_at,
+        }));
         setHistory(null); // invalidate so it reloads
       }
     } finally {
@@ -100,9 +139,46 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled 
     }
   };
 
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const fields: Parameters<typeof onUpdate>[1] = {
+        name: editForm.name,
+        url: editForm.url,
+        username: editForm.username,
+        interval: editForm.interval,
+        notify_email: editForm.notify_email || null,
+        enabled: editForm.enabled ? 1 : 0,
+      };
+      if (editForm.password) {
+        fields.password = editForm.password;
+      }
+      const updated = await onUpdate(currentMonitor.id, fields);
+      if (updated) {
+        setCurrentMonitor(updated);
+        setEditing(false);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditForm({
+      name: currentMonitor.name,
+      url: currentMonitor.url,
+      username: currentMonitor.username,
+      password: "",
+      interval: currentMonitor.interval,
+      notify_email: currentMonitor.notify_email ?? "",
+      enabled: currentMonitor.enabled === 1,
+    });
+    setEditing(false);
+  };
+
   const status = latestStatus ?? currentMonitor.last_status;
   const responseMs = latestResult?.response_ms ?? currentMonitor.last_response_ms;
-  const error = latestResult?.error;
+  const error = latestResult?.error ?? (status === "down" && !latestResult ? null : null);
 
   const StatusIcon = status === "up" ? CheckCircle : status === "down" ? XCircle : Activity;
   const iconColor =
@@ -125,7 +201,6 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled 
     : status === "down" ? t("monitors.status.down")
     : t("ssl.notChecked");
 
-  // Shorten URL for display
   let displayUrl = currentMonitor.url;
   try {
     const parsed = new URL(currentMonitor.url);
@@ -169,14 +244,9 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled 
         </div>
 
         {/* Error message */}
-        {status === "down" && error && (
+        {status === "down" && latestResult?.error && (
           <p className="text-xs text-red-400 bg-red-500/10 rounded-md px-2 py-1.5 mb-3 font-mono break-all">
-            {error}
-          </p>
-        )}
-        {status === "down" && !error && latestResult === null && currentMonitor.last_status === "down" && (
-          <p className="text-xs text-red-400 bg-red-500/10 rounded-md px-2 py-1.5 mb-3">
-            {t("monitors.status.down")}
+            {latestResult.error}
           </p>
         )}
 
@@ -272,6 +342,94 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled 
           </div>
         )}
 
+        {/* ── Edit panel ── */}
+        {editing && (
+          <>
+            <Separator className="my-3" />
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-xs text-muted-foreground mb-1">{t("monitors.name")}</label>
+                  <input
+                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-muted-foreground mb-1">{t("monitors.url")}</label>
+                  <input
+                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={editForm.url}
+                    onChange={(e) => setEditForm((f) => ({ ...f, url: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">{t("monitors.username")}</label>
+                  <input
+                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={editForm.username}
+                    onChange={(e) => setEditForm((f) => ({ ...f, username: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">
+                    {t("monitors.password")} <span className="text-muted-foreground/60">(vacío = no cambiar)</span>
+                  </label>
+                  <input
+                    type="password"
+                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="••••••••"
+                    value={editForm.password}
+                    onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">{t("monitors.interval")}</label>
+                  <select
+                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={editForm.interval}
+                    onChange={(e) => setEditForm((f) => ({ ...f, interval: e.target.value as AppMonitorInterval }))}
+                  >
+                    {INTERVAL_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">{t("monitors.alertEmail")}</label>
+                  <input
+                    type="email"
+                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="you@example.com"
+                    value={editForm.notify_email}
+                    onChange={(e) => setEditForm((f) => ({ ...f, notify_email: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editForm.enabled}
+                  onChange={(e) => setEditForm((f) => ({ ...f, enabled: e.target.checked }))}
+                  className="rounded"
+                />
+                <span className="text-muted-foreground">{t("ssl.edit.enabled")}</span>
+              </label>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleSave} disabled={saving || !editForm.name || !editForm.url}>
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+                  {t("common.save")}
+                </Button>
+                <Button size="sm" variant="outline" onClick={cancelEdit}>
+                  <X className="h-3.5 w-3.5 mr-1" />
+                  {t("common.cancel")}
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+
         {/* Footer */}
         <div className="flex items-center justify-between pt-2 mt-2 border-t border-border/40">
           <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
@@ -283,9 +441,18 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled 
             </span>
             <span className="text-muted-foreground capitalize">
               {currentMonitor.interval} · {currentMonitor.username}
+              {currentMonitor.notify_email && " · ✉"}
             </span>
           </div>
           <div className="flex gap-1.5">
+            <Button
+              variant={editing ? "default" : "outline"}
+              size="sm"
+              onClick={() => setEditing((v) => !v)}
+              title={editing ? t("common.cancel") : "Edit"}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
             <Button
               variant="outline"
               size="sm"

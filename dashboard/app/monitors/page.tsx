@@ -89,6 +89,31 @@ export default function MonitorsPage() {
     load();
   };
 
+  const handleUpdate = async (
+    id: string,
+    fields: {
+      name?: string;
+      url?: string;
+      username?: string;
+      password?: string;
+      interval?: AppMonitorInterval;
+      notify_email?: string | null;
+      enabled?: number;
+    }
+  ): Promise<SafeMonitor | null> => {
+    const res = await fetch(`/api/app-monitors/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fields),
+    });
+    if (res.ok) {
+      const updated = await res.json() as SafeMonitor;
+      setMonitors((prev) => prev.map((m) => (m.id === id ? updated : m)));
+      return updated;
+    }
+    return null;
+  };
+
   const total = monitors.length;
   const up = monitors.filter((m) => m.last_status === "up").length;
   const down = monitors.filter((m) => m.last_status === "down").length;
@@ -224,6 +249,7 @@ export default function MonitorsPage() {
               onDelete={handleDelete}
               onCheckNow={handleCheckNow}
               onToggleEnabled={handleToggleEnabled}
+              onUpdate={handleUpdate}
             />
           ))}
         </div>

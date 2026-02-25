@@ -9,6 +9,24 @@ function buildAbsoluteUrl(base: string, action: string): string {
   }
 }
 
+/** Extract cookies from a fetch Response to send in the next request */
+function extractCookies(res: Response): string {
+  try {
+    // getSetCookie() returns each Set-Cookie header as a separate string (Node 18+)
+    if (typeof (res.headers as { getSetCookie?: () => string[] }).getSetCookie === "function") {
+      const cookies = (res.headers as { getSetCookie: () => string[] }).getSetCookie();
+      return cookies.map((c) => c.split(";")[0]).join("; ");
+    }
+  } catch {}
+  // Fallback: headers.get('set-cookie') (may be comma-joined)
+  const raw = res.headers.get("set-cookie") ?? "";
+  if (!raw) return "";
+  return raw
+    .split(/,(?=[^;]+=[^;]+;|[^;]+=)/)
+    .map((c) => c.split(";")[0].trim())
+    .join("; ");
+}
+
 export async function checkApp(
   url: string,
   username: string,
@@ -18,21 +36,30 @@ export async function checkApp(
   const now = new Date().toISOString();
 
   try {
-    // Step 1: GET login page
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
+    // ── Step 1: GET login page (follow redirects to reach the actual login form) ──
+    const getController = new AbortController();
+    const getTimer = setTimeout(() => getController.abort(), 15000);
 
     let loginHtml = "";
     let loginStatus = 0;
+    let finalUrl = url;   // URL after all redirects — critical for APEX relative form actions
+    let sessionCookies = "";
 
     try {
       const getRes = await fetch(url, {
         redirect: "follow",
-        signal: controller.signal,
-        headers: { "User-Agent": "TupiSec-Monitor/1.0" },
+        signal: getController.signal,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; TupiSec-Monitor/1.0)",
+          "Accept": "text/html,application/xhtml+xml,*/*",
+        },
       });
-      clearTimeout(timer);
+      clearTimeout(getTimer);
       loginStatus = getRes.status;
+      // Use the final URL (after redirects) so relative form actions resolve correctly
+      finalUrl = getRes.url || url;
+      // Capture session cookies (APEX requires these on the POST)
+      sessionCookies = extractCookies(getRes);
       loginHtml = await getRes.text().catch(() => "");
 
       if (getRes.status >= 400) {
@@ -42,11 +69,11 @@ export async function checkApp(
           status: "down",
           response_ms: Date.now() - start,
           status_code: getRes.status,
-          error: `HTTP ${getRes.status}`,
+          error: `HTTP ${getRes.status} on GET`,
         };
       }
     } catch (err) {
-      clearTimeout(timer);
+      clearTimeout(getTimer);
       return {
         url,
         checked_at: now,
@@ -57,71 +84,80 @@ export async function checkApp(
       };
     }
 
-    // Step 2: Parse form from HTML
-    let postUrl = url;
+    // ── Step 2: Parse login form ──
+    let postUrl = finalUrl;
     const formParams = new URLSearchParams();
 
-    // Extract form action
-    const formMatch = loginHtml.match(/<form[^>]*action=["']([^"']*)["'][^>]*>/i)
-      ?? loginHtml.match(/<form[^>]*>/i);
-    if (formMatch) {
-      const actionMatch = formMatch[0].match(/action=["']([^"']*)["']/i);
-      if (actionMatch) {
-        postUrl = buildAbsoluteUrl(url, actionMatch[1]);
+    // Extract form action — use finalUrl as base (not the original url)
+    const actionMatch = loginHtml.match(/action=["']([^"']+)["']/i);
+    if (actionMatch) {
+      postUrl = buildAbsoluteUrl(finalUrl, actionMatch[1]);
+    }
+
+    // Collect ALL hidden inputs
+    const hiddenRe =
+      /<input[^>]+type=["']hidden["'][^>]*>/gi;
+    for (const inputTag of loginHtml.matchAll(hiddenRe)) {
+      const tag = inputTag[0];
+      const nameM = tag.match(/name=["']([^"']*)["']/i);
+      const valM  = tag.match(/value=["']([^"']*)["']/i);
+      if (nameM && valM) formParams.set(nameM[1], valM[1]);
+    }
+    // Also handle hidden inputs where value comes before name
+    const hiddenRe2 = /<input[^>]+type=["']hidden["'][^>]*>/gi;
+    for (const inputTag of loginHtml.matchAll(hiddenRe2)) {
+      const tag = inputTag[0];
+      const nameM = tag.match(/name=["']([^"']*)["']/i);
+      const valM  = tag.match(/value=["']([^"']*)["']/i);
+      if (nameM && !formParams.has(nameM[1]) && valM) {
+        formParams.set(nameM[1], valM[1]);
       }
     }
 
-    // Collect hidden inputs
-    const hiddenMatches = loginHtml.matchAll(
-      /<input[^>]+type=["']hidden["'][^>]*name=["']([^"']*)["'][^>]*value=["']([^"']*)["'][^>]*>/gi
-    );
-    for (const m of hiddenMatches) {
-      formParams.set(m[1], m[2]);
-    }
-    // Also catch reversed attribute order
-    const hiddenMatches2 = loginHtml.matchAll(
-      /<input[^>]+type=["']hidden["'][^>]*value=["']([^"']*)["'][^>]*name=["']([^"']*)["'][^>]*>/gi
-    );
-    for (const m of hiddenMatches2) {
-      if (!formParams.has(m[2])) formParams.set(m[2], m[1]);
-    }
-
-    // Detect username field name
+    // Detect username field name (text or email input)
     let usernameField = "p_username";
-    const userFieldMatch =
-      loginHtml.match(/<input[^>]+type=["'](text|email)["'][^>]*name=["']([^"']*)["'][^>]*>/i) ??
-      loginHtml.match(/<input[^>]+name=["']([^"']*)["'][^>]*type=["'](text|email)["'][^>]*>/i);
-    if (userFieldMatch) {
-      const nameIdx = userFieldMatch[0].match(/name=["']([^"']*)["']/i);
-      if (nameIdx) usernameField = nameIdx[1];
+    const userTagMatch = loginHtml.match(
+      /<input[^>]+type=["'](text|email)["'][^>]*>/i
+    );
+    if (userTagMatch) {
+      const nameM = userTagMatch[0].match(/name=["']([^"']*)["']/i);
+      if (nameM) usernameField = nameM[1];
     }
 
     // Detect password field name
     let passwordField = "p_password";
-    const passFieldMatch =
-      loginHtml.match(/<input[^>]+type=["']password["'][^>]*name=["']([^"']*)["'][^>]*>/i) ??
-      loginHtml.match(/<input[^>]+name=["']([^"']*)["'][^>]*type=["']password["'][^>]*>/i);
-    if (passFieldMatch) {
-      const nameIdx = passFieldMatch[0].match(/name=["']([^"']*)["']/i);
-      if (nameIdx) passwordField = nameIdx[1];
+    const passTagMatch = loginHtml.match(
+      /<input[^>]+type=["']password["'][^>]*>/i
+    );
+    if (passTagMatch) {
+      const nameM = passTagMatch[0].match(/name=["']([^"']*)["']/i);
+      if (nameM) passwordField = nameM[1];
     }
 
     formParams.set(usernameField, username);
     formParams.set(passwordField, password);
 
-    // Step 3: POST credentials
+    // ── Step 3: POST credentials ──
     const postController = new AbortController();
-    const postTimer = setTimeout(() => postController.abort(), 10000);
+    const postTimer = setTimeout(() => postController.abort(), 15000);
+
+    const postHeaders: Record<string, string> = {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": "Mozilla/5.0 (compatible; TupiSec-Monitor/1.0)",
+      "Accept": "text/html,application/xhtml+xml,*/*",
+      "Referer": finalUrl,
+    };
+    // !! Pass session cookies — required for APEX and most session-based apps
+    if (sessionCookies) {
+      postHeaders["Cookie"] = sessionCookies;
+    }
 
     try {
       const postRes = await fetch(postUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": "TupiSec-Monitor/1.0",
-        },
+        headers: postHeaders,
         body: formParams.toString(),
-        redirect: "manual",
+        redirect: "manual",   // catch the 302 redirect ourselves
         signal: postController.signal,
       });
       clearTimeout(postTimer);
@@ -129,7 +165,7 @@ export async function checkApp(
       const responseMs = Date.now() - start;
       const statusCode = postRes.status;
 
-      // Success detection
+      // Redirect → login accepted ✓
       if ([301, 302, 303, 307, 308].includes(statusCode)) {
         return {
           url,
@@ -142,8 +178,11 @@ export async function checkApp(
 
       if (statusCode === 200) {
         const responseHtml = await postRes.text().catch(() => "");
-        // If response has no password field, assume login succeeded (no longer on login page)
-        if (!responseHtml.includes('type="password"') && !responseHtml.includes("type='password'")) {
+        // No password field in response → we're past the login page
+        if (
+          !responseHtml.includes('type="password"') &&
+          !responseHtml.includes("type='password'")
+        ) {
           return {
             url,
             checked_at: now,
@@ -152,6 +191,15 @@ export async function checkApp(
             status_code: statusCode,
           };
         }
+        // Still has password field → login failed
+        return {
+          url,
+          checked_at: now,
+          status: "down",
+          response_ms: responseMs,
+          status_code: statusCode,
+          error: "Login failed — still on login page after POST",
+        };
       }
 
       return {
@@ -160,7 +208,7 @@ export async function checkApp(
         status: "down",
         response_ms: responseMs,
         status_code: statusCode,
-        error: `Login failed (HTTP ${statusCode})`,
+        error: `Unexpected HTTP ${statusCode} after POST`,
       };
     } catch (err) {
       clearTimeout(postTimer);
