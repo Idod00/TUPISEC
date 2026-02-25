@@ -23,7 +23,7 @@ export const APP_CRON_MAP: Record<AppMonitorInterval, string> = {
 
 const activeAppTasks = new Map<string, ScheduledTask>();
 
-function computeNextRun(interval: AppMonitorInterval): string {
+export function computeNextRun(interval: AppMonitorInterval): string {
   const now = new Date();
   const next = new Date(now);
   switch (interval) {

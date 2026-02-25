@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { getAppMonitor, saveAppCheckHistory, updateAppMonitorAfterCheck } from "@/lib/db";
 import { checkApp, checkAvailability } from "@/lib/app-checker";
+import { computeNextRun } from "@/lib/app-monitor-scheduler";
+import type { AppMonitorInterval } from "@/lib/types";
 import { decryptValue } from "@/lib/crypto";
 
 export async function POST(
@@ -57,7 +59,8 @@ export async function POST(
       availResult.status === "up" && loginResult.status === "up" ? "up" : "down";
 
     const now = new Date().toISOString();
-    await updateAppMonitorAfterCheck(id, overallStatus, availResult.response_ms, now, now, loginResult.status);
+    const nextRun = computeNextRun(monitor.interval as AppMonitorInterval);
+    await updateAppMonitorAfterCheck(id, overallStatus, availResult.response_ms, now, nextRun, loginResult.status);
 
     return NextResponse.json({ status: overallStatus, availability: availResult, login: loginResult });
   } catch (error) {
