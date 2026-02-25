@@ -23,11 +23,33 @@ export const APP_CRON_MAP: Record<AppMonitorInterval, string> = {
 
 const activeAppTasks = new Map<string, ScheduledTask>();
 
-function computeNextRun(cronExpr: string): string {
-  // Approximate next run as now + 1 min (cron library doesn't expose next tick)
+function computeNextRun(interval: AppMonitorInterval): string {
   const now = new Date();
-  now.setMinutes(now.getMinutes() + 1);
-  return now.toISOString();
+  const next = new Date(now);
+  switch (interval) {
+    case "5min":
+      next.setMinutes(Math.ceil((now.getMinutes() + 1) / 5) * 5, 0, 0);
+      break;
+    case "15min":
+      next.setMinutes(Math.ceil((now.getMinutes() + 1) / 15) * 15, 0, 0);
+      break;
+    case "30min":
+      next.setMinutes(Math.ceil((now.getMinutes() + 1) / 30) * 30, 0, 0);
+      break;
+    case "1h":
+      next.setHours(now.getHours() + 1, 0, 0, 0);
+      break;
+    case "6h":
+      next.setHours(Math.ceil((now.getHours() + 1) / 6) * 6, 0, 0, 0);
+      break;
+    case "1d":
+      next.setDate(now.getDate() + 1);
+      next.setHours(9, 0, 0, 0);
+      break;
+    default:
+      next.setMinutes(now.getMinutes() + 15, 0, 0);
+  }
+  return next.toISOString();
 }
 
 async function dispatchAppNotifications(
@@ -153,7 +175,7 @@ async function executeAppCheck(monitorId: string): Promise<void> {
   }
 
   const now = new Date().toISOString();
-  const nextRun = computeNextRun(monitor.cron_expr);
+  const nextRun = computeNextRun(monitor.interval as AppMonitorInterval);
 
   // ── Check 1: Availability (GET) ──
   const availResult = await checkAvailability(monitor.url);

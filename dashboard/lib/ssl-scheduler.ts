@@ -19,10 +19,30 @@ export const SSL_CRON_MAP: Record<SSLMonitorRecord["interval"], string> = {
 
 const activeSSLTasks = new Map<string, ScheduledTask>();
 
-function computeNextRun(): string {
+function computeNextRun(interval: SSLMonitorRecord["interval"]): string {
   const now = new Date();
-  now.setMinutes(now.getMinutes() + 1);
-  return now.toISOString();
+  const next = new Date(now);
+  switch (interval) {
+    case "daily":
+      next.setDate(now.getDate() + 1);
+      next.setHours(8, 0, 0, 0);
+      break;
+    case "weekly": {
+      // Next Monday at 08:00
+      const daysUntilMonday = ((1 - now.getDay() + 7) % 7) || 7;
+      next.setDate(now.getDate() + daysUntilMonday);
+      next.setHours(8, 0, 0, 0);
+      break;
+    }
+    case "monthly":
+      next.setMonth(now.getMonth() + 1, 1);
+      next.setHours(8, 0, 0, 0);
+      break;
+    default:
+      next.setDate(now.getDate() + 1);
+      next.setHours(8, 0, 0, 0);
+  }
+  return next.toISOString();
 }
 
 async function dispatchSSLNotifications(
@@ -133,7 +153,7 @@ async function executeSSLCheck(monitorId: string): Promise<void> {
   await saveSSLCheckHistory(checkId, monitorId, status, result.days_remaining, result);
 
   const now = new Date().toISOString();
-  const nextRun = computeNextRun();
+  const nextRun = computeNextRun(monitor.interval);
   await updateSSLMonitorAfterCheck(monitorId, status, result.days_remaining, now, nextRun, result);
 
   if (status !== "ok") {
