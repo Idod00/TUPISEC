@@ -5,7 +5,8 @@ __pycache__/
 *.log
 .DS_Store
 
-# SQLite runtime files
+# SQLite files (migrated to PostgreSQL)
+dashboard/data/*.db
 dashboard/data/*.db-shm
 dashboard/data/*.db-wal
 dashboard/data/*.db-journal
