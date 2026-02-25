@@ -281,14 +281,14 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled,
 
         {/* Live check details */}
         {lastAvail?.response_detail && (
-          <p className={`text-xs rounded-md px-2 py-1 mb-1 font-mono truncate ${lastAvail.status === "up" ? "bg-blue-500/10 text-blue-300" : "bg-red-500/10 text-red-400"}`}>
+          <div className={`text-xs rounded-md px-2 py-1 mb-1 font-mono overflow-x-auto whitespace-nowrap ${lastAvail.status === "up" ? "bg-blue-500/10 text-blue-300" : "bg-red-500/10 text-red-400"}`}>
             {lastAvail.response_detail}
-          </p>
+          </div>
         )}
         {lastLogin?.response_detail && (
-          <p className={`text-xs rounded-md px-2 py-1 mb-2 font-mono truncate ${lastLogin.status === "up" ? "bg-green-500/10 text-green-300" : "bg-red-500/10 text-red-400"}`}>
+          <div className={`text-xs rounded-md px-2 py-1 mb-2 font-mono overflow-x-auto whitespace-nowrap ${lastLogin.status === "up" ? "bg-green-500/10 text-green-300" : "bg-red-500/10 text-red-400"}`}>
             {lastLogin.response_detail}
-          </p>
+          </div>
         )}
 
         {/* Stats grid */}
@@ -370,9 +370,9 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled,
                         </span>
                       </div>
                       {entry.response_detail && (
-                        <p className="font-mono text-[10px] text-muted-foreground/80 truncate pl-1">
+                        <div className="font-mono text-[10px] text-muted-foreground/80 overflow-x-auto whitespace-nowrap pl-1">
                           {entry.response_detail}
-                        </p>
+                        </div>
                       )}
                       {!entry.response_detail && entry.error && (
                         <p className="text-[10px] text-red-400 truncate pl-1">{entry.error}</p>
