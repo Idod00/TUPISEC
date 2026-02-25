@@ -209,6 +209,7 @@ export interface AppMonitorRecord {
   last_check: string | null;
   next_check: string | null;
   last_status: "up" | "down" | null;
+  last_login_status: "up" | "down" | null;
   last_response_ms: number | null;
   notify_email: string | null;
 }
@@ -230,4 +231,5 @@ export interface AppCheckHistoryRecord {
   response_ms: number | null;
   status_code: number | null;
   error: string | null;
+  check_type: "availability" | "login";
 }

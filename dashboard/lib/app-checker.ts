@@ -25,6 +25,41 @@ function extractCookies(res: Response): string {
     .join("; ");
 }
 
+export async function checkAvailability(url: string): Promise<AppCheckResult> {
+  const start = Date.now();
+  const now = new Date().toISOString();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await fetch(url, {
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; TupiSec-Monitor/1.0)",
+        "Accept": "text/html,*/*",
+      },
+    });
+    clearTimeout(timer);
+    return {
+      url,
+      checked_at: now,
+      status: "up",   // any HTTP response = server is reachable
+      response_ms: Date.now() - start,
+      status_code: res.status,
+    };
+  } catch (err) {
+    clearTimeout(timer);
+    return {
+      url,
+      checked_at: now,
+      status: "down",
+      response_ms: Date.now() - start,
+      status_code: null,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 export async function checkApp(
   url: string,
   username: string,

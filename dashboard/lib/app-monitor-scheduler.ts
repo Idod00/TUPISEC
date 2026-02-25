@@ -7,7 +7,7 @@ import {
   saveAppCheckHistory,
   listNotificationConfigs,
 } from "./db";
-import { checkApp } from "./app-checker";
+import { checkApp, checkAvailability } from "./app-checker";
 import { decryptValue } from "./crypto";
 import { sendEmail } from "./mailer";
 import type { AppMonitorRecord, AppCheckResult, AppMonitorInterval } from "./types";
@@ -152,32 +152,57 @@ async function executeAppCheck(monitorId: string): Promise<void> {
     password = monitor.password_enc;
   }
 
-  const result = await checkApp(monitor.url, monitor.username, password);
-
-  const checkId = randomUUID();
-  saveAppCheckHistory(
-    checkId,
-    monitorId,
-    result.checked_at,
-    result.status,
-    result.response_ms,
-    result.status_code ?? null,
-    result.error ?? null
-  );
-
   const now = new Date().toISOString();
   const nextRun = computeNextRun(monitor.cron_expr);
-  updateAppMonitorAfterCheck(monitorId, result.status, result.response_ms, now, nextRun);
 
-  // Notify only on status change to down (or first down)
-  if (result.status === "down" && monitor.last_status !== "down") {
-    dispatchAppNotifications(monitor, result).catch((err) =>
+  // ── Check 1: Availability (GET) ──
+  const availResult = await checkAvailability(monitor.url);
+  saveAppCheckHistory(
+    randomUUID(), monitorId, availResult.checked_at,
+    availResult.status, availResult.response_ms,
+    availResult.status_code ?? null, availResult.error ?? null,
+    "availability"
+  );
+
+  // ── Check 2: Login (POST) — always run ──
+  let loginResult: AppCheckResult;
+  if (availResult.status === "up") {
+    loginResult = await checkApp(monitor.url, monitor.username, password);
+  } else {
+    loginResult = {
+      url: monitor.url,
+      checked_at: new Date().toISOString(),
+      status: "down",
+      response_ms: 0,
+      status_code: null,
+      error: "Skipped — site not reachable",
+    };
+  }
+  saveAppCheckHistory(
+    randomUUID(), monitorId, loginResult.checked_at,
+    loginResult.status, loginResult.response_ms,
+    loginResult.status_code ?? null, loginResult.error ?? null,
+    "login"
+  );
+
+  // Overall: UP only if both pass
+  const overallStatus: "up" | "down" =
+    availResult.status === "up" && loginResult.status === "up" ? "up" : "down";
+
+  updateAppMonitorAfterCheck(
+    monitorId, overallStatus, availResult.response_ms, now, nextRun, loginResult.status
+  );
+
+  // Notify only on transition to down
+  if (overallStatus === "down" && monitor.last_status !== "down") {
+    const failedResult = availResult.status === "down" ? availResult : loginResult;
+    dispatchAppNotifications(monitor, failedResult).catch((err) =>
       console.error("[app-scheduler] Notification dispatch failed:", err)
     );
   }
 
   console.log(
-    `[app-scheduler] ${monitor.name} → ${result.status} (${result.response_ms}ms)`
+    `[app-scheduler] ${monitor.name} → availability:${availResult.status} login:${loginResult.status} (${availResult.response_ms}ms)`
   );
 }
 

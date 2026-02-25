@@ -198,6 +198,17 @@ function getDb(): Database.Database {
         error TEXT
       );
     `);
+    // Migrations: app_monitors
+    const appMonCols = _db.prepare("PRAGMA table_info(app_monitors)").all() as { name: string }[];
+    if (!appMonCols.some((c) => c.name === "last_login_status")) {
+      _db.exec("ALTER TABLE app_monitors ADD COLUMN last_login_status TEXT");
+    }
+
+    // Migrations: app_check_history
+    const appHistCols = _db.prepare("PRAGMA table_info(app_check_history)").all() as { name: string }[];
+    if (!appHistCols.some((c) => c.name === "check_type")) {
+      _db.exec("ALTER TABLE app_check_history ADD COLUMN check_type TEXT NOT NULL DEFAULT 'login'");
+    }
   }
   return _db;
 }
@@ -614,7 +625,7 @@ export function touchApiToken(id: string): void {
 
 // ─── App Monitors ──────────────────────────────────────────────────
 
-export function createAppMonitor(monitor: Omit<AppMonitorRecord, "last_check" | "next_check" | "last_status" | "last_response_ms">): AppMonitorRecord {
+export function createAppMonitor(monitor: Omit<AppMonitorRecord, "last_check" | "next_check" | "last_status" | "last_login_status" | "last_response_ms">): AppMonitorRecord {
   const db = getDb();
   db.prepare(
     `INSERT INTO app_monitors (id, name, url, username, password_enc, interval, cron_expr, enabled, created_at, notify_email)
@@ -666,12 +677,13 @@ export function updateAppMonitorAfterCheck(
   status: "up" | "down",
   responseMs: number,
   lastCheck: string,
-  nextCheck: string
+  nextCheck: string,
+  loginStatus?: "up" | "down" | null
 ): void {
   const db = getDb();
   db.prepare(
-    `UPDATE app_monitors SET last_status = ?, last_response_ms = ?, last_check = ?, next_check = ? WHERE id = ?`
-  ).run(status, responseMs, lastCheck, nextCheck, id);
+    `UPDATE app_monitors SET last_status = ?, last_response_ms = ?, last_check = ?, next_check = ?, last_login_status = ? WHERE id = ?`
+  ).run(status, responseMs, lastCheck, nextCheck, loginStatus ?? null, id);
 }
 
 // ─── App Check History ─────────────────────────────────────────────
@@ -683,13 +695,14 @@ export function saveAppCheckHistory(
   status: "up" | "down",
   responseMs: number | null,
   statusCode: number | null,
-  error: string | null
+  error: string | null,
+  checkType: "availability" | "login" = "login"
 ): void {
   const db = getDb();
   db.prepare(
-    `INSERT INTO app_check_history (id, monitor_id, checked_at, status, response_ms, status_code, error)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, monitorId, checkedAt, status, responseMs, statusCode, error ?? null);
+    `INSERT INTO app_check_history (id, monitor_id, checked_at, status, response_ms, status_code, error, check_type)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, monitorId, checkedAt, status, responseMs, statusCode, error ?? null, checkType);
 }
 
 export function getAppCheckHistory(monitorId: string, limit = 50): AppCheckHistoryRecord[] {

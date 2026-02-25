@@ -71,7 +71,7 @@ export default function MonitorsPage() {
     load();
   };
 
-  const handleCheckNow = async (id: string): Promise<{ status: string; result: AppCheckResult } | null> => {
+  const handleCheckNow = async (id: string): Promise<{ status: string; availability: AppCheckResult; login: AppCheckResult } | null> => {
     const res = await fetch(`/api/app-monitors/${id}/check`, { method: "POST" });
     if (res.ok) {
       load();

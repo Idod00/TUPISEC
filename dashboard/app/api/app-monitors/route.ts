@@ -5,6 +5,13 @@ import { registerAppMonitor, APP_CRON_MAP } from "@/lib/app-monitor-scheduler";
 import { encryptValue } from "@/lib/crypto";
 import type { AppMonitorInterval } from "@/lib/types";
 
+function normalizeUrl(raw: string): string {
+  const s = raw.trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  return `https://${s}`;
+}
+
+
 export async function GET() {
   const monitors = listAppMonitors();
   // Never send password_enc to the client
@@ -40,7 +47,7 @@ export async function POST(request: Request) {
     const monitor = createAppMonitor({
       id: randomUUID(),
       name: name.trim(),
-      url: url.trim(),
+      url: normalizeUrl(url),
       username: username.trim(),
       password_enc: passwordEnc,
       interval: interval as AppMonitorInterval,

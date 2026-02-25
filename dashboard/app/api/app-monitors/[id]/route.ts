@@ -4,6 +4,13 @@ import { unregisterAppMonitor, registerAppMonitor, APP_CRON_MAP } from "@/lib/ap
 import { encryptValue } from "@/lib/crypto";
 import type { AppMonitorInterval } from "@/lib/types";
 
+function normalizeUrl(raw: string): string {
+  const s = raw.trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  return `https://${s}`;
+}
+
+
 export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -33,7 +40,7 @@ export async function PATCH(
 
     const fields: Record<string, unknown> = {};
     if (name !== undefined) fields.name = name;
-    if (url !== undefined) fields.url = url;
+    if (url !== undefined) fields.url = normalizeUrl(url);
     if (username !== undefined) fields.username = username;
     if (password !== undefined) fields.password_enc = encryptValue(password);
     if (interval !== undefined) {

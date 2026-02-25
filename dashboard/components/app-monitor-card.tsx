@@ -5,7 +5,7 @@ import {
   Activity, Trash2, RefreshCw, Loader2,
   CheckCircle, XCircle, Clock,
   ExternalLink, ChevronDown, ChevronUp, History,
-  Power, Pencil, Save, X,
+  Power, Pencil, Save, X, Globe, LogIn,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -18,7 +18,7 @@ type SafeMonitor = Omit<AppMonitorRecord, "password_enc">;
 interface Props {
   monitor: SafeMonitor;
   onDelete: (id: string) => void;
-  onCheckNow: (id: string) => Promise<{ status: string; result: AppCheckResult } | null>;
+  onCheckNow: (id: string) => Promise<{ status: string; availability: AppCheckResult; login: AppCheckResult } | null>;
   onToggleEnabled: (id: string, enabled: boolean) => Promise<void>;
   onUpdate: (id: string, fields: {
     name?: string;
@@ -40,23 +40,39 @@ const INTERVAL_OPTIONS: { value: AppMonitorInterval; label: string }[] = [
   { value: "1d",    label: "Diario" },
 ];
 
-function UptimeDots({ history }: { history: AppCheckHistoryRecord[] }) {
-  const dots = history.slice(0, 20).reverse();
+function CheckTypeBadge({ type }: { type: "availability" | "login" }) {
+  return type === "availability" ? (
+    <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-blue-500/10 text-blue-400 font-mono">
+      <Globe className="h-2.5 w-2.5" /> GET
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-violet-500/10 text-violet-400 font-mono">
+      <LogIn className="h-2.5 w-2.5" /> POST
+    </span>
+  );
+}
+
+function StatusDot({ status, type }: { status: "up" | "down"; type: "availability" | "login" }) {
+  const upColor = type === "availability" ? "bg-blue-500" : "bg-green-500";
   return (
-    <div className="flex gap-0.5 items-center flex-wrap">
-      {dots.map((h) => (
-        <div
-          key={h.id}
-          title={`${new Date(h.checked_at).toLocaleString()} — ${h.status.toUpperCase()}${h.response_ms ? ` (${h.response_ms}ms)` : ""}${h.error ? ` — ${h.error}` : ""}`}
-          className={cn(
-            "w-2 h-4 rounded-sm flex-shrink-0",
-            h.status === "up" ? "bg-green-500" : "bg-red-500"
-          )}
-        />
-      ))}
-      {dots.length === 0 && (
-        <span className="text-xs text-muted-foreground italic">—</span>
+    <span
+      className={cn(
+        "inline-block w-2 h-4 rounded-sm flex-shrink-0",
+        status === "up" ? upColor : "bg-red-500"
       )}
+    />
+  );
+}
+
+function HistoryDots({ history }: { history: AppCheckHistoryRecord[] }) {
+  // Show last 30 entries in chronological order
+  const dots = [...history].reverse().slice(-30);
+  return (
+    <div className="flex gap-0.5 flex-wrap items-center">
+      {dots.map((h) => (
+        <StatusDot key={h.id} status={h.status} type={h.check_type ?? "login"} />
+      ))}
+      {dots.length === 0 && <span className="text-xs text-muted-foreground italic">—</span>}
     </div>
   );
 }
@@ -68,8 +84,8 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled,
   const [toggling, setToggling] = useState(false);
   const [saving, setSaving] = useState(false);
   const [currentMonitor, setCurrentMonitor] = useState(monitor);
-  const [latestResult, setLatestResult] = useState<AppCheckResult | null>(null);
-  const [latestStatus, setLatestStatus] = useState<"up" | "down" | null>(monitor.last_status);
+  const [lastAvail, setLastAvail] = useState<AppCheckResult | null>(null);
+  const [lastLogin, setLastLogin] = useState<AppCheckResult | null>(null);
 
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<AppCheckHistoryRecord[] | null>(null);
@@ -81,7 +97,7 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled,
     name: monitor.name,
     url: monitor.url,
     username: monitor.username,
-    password: "",          // blank = don't change
+    password: "",
     interval: monitor.interval,
     notify_email: monitor.notify_email ?? "",
     enabled: monitor.enabled === 1,
@@ -113,15 +129,16 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled,
     try {
       const res = await onCheckNow(currentMonitor.id);
       if (res) {
-        setLatestResult(res.result);
-        setLatestStatus(res.status as "up" | "down");
+        setLastAvail(res.availability);
+        setLastLogin(res.login);
         setCurrentMonitor((m) => ({
           ...m,
           last_status: res.status as "up" | "down",
-          last_response_ms: res.result.response_ms,
-          last_check: res.result.checked_at,
+          last_login_status: res.login.status as "up" | "down",
+          last_response_ms: res.availability.response_ms,
+          last_check: res.availability.checked_at,
         }));
-        setHistory(null); // invalidate so it reloads
+        setHistory(null);
       }
     } finally {
       setChecking(false);
@@ -150,9 +167,7 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled,
         notify_email: editForm.notify_email || null,
         enabled: editForm.enabled ? 1 : 0,
       };
-      if (editForm.password) {
-        fields.password = editForm.password;
-      }
+      if (editForm.password) fields.password = editForm.password;
       const updated = await onUpdate(currentMonitor.id, fields);
       if (updated) {
         setCurrentMonitor(updated);
@@ -176,30 +191,21 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled,
     setEditing(false);
   };
 
-  const status = latestStatus ?? currentMonitor.last_status;
-  const responseMs = latestResult?.response_ms ?? currentMonitor.last_response_ms;
-  const error = latestResult?.error ?? (status === "down" && !latestResult ? null : null);
-
-  const StatusIcon = status === "up" ? CheckCircle : status === "down" ? XCircle : Activity;
-  const iconColor =
-    status === "up" ? "text-green-400"
-    : status === "down" ? "text-red-400"
-    : "text-muted-foreground";
+  // Derive display values
+  const overallStatus = currentMonitor.last_status;
+  const loginStatus = currentMonitor.last_login_status;
+  const responseMs = lastAvail?.response_ms ?? currentMonitor.last_response_ms;
 
   const stripColor =
-    status === "up" ? "bg-green-500"
-    : status === "down" ? "bg-red-500"
+    overallStatus === "up" ? "bg-green-500"
+    : overallStatus === "down" ? "bg-red-500"
     : "bg-muted";
 
-  const badgeClass =
-    status === "up" ? "bg-green-500/10 text-green-400"
-    : status === "down" ? "bg-red-500/10 text-red-400"
-    : "bg-muted text-muted-foreground";
-
-  const badgeLabel =
-    status === "up" ? t("monitors.status.up")
-    : status === "down" ? t("monitors.status.down")
-    : t("ssl.notChecked");
+  const StatusIcon = overallStatus === "up" ? CheckCircle : overallStatus === "down" ? XCircle : Activity;
+  const iconColor =
+    overallStatus === "up" ? "text-green-400"
+    : overallStatus === "down" ? "text-red-400"
+    : "text-muted-foreground";
 
   let displayUrl = currentMonitor.url;
   try {
@@ -207,13 +213,14 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled,
     displayUrl = parsed.hostname + (parsed.pathname !== "/" ? parsed.pathname : "");
   } catch {}
 
+  const availStatus = lastAvail?.status ?? (overallStatus === "up" ? "up" : overallStatus === "down" ? "down" : null);
+
   return (
     <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
-      {/* Color strip */}
       <div className={cn("h-1 w-full", stripColor)} />
 
       <div className="p-4">
-        {/* Header row */}
+        {/* Header */}
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-2 min-w-0">
             <StatusIcon className={cn("h-4 w-4 flex-shrink-0", iconColor)} />
@@ -231,41 +238,69 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled,
               </a>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-            {currentMonitor.enabled === 0 && (
-              <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                {t("ssl.disabled")}
-              </span>
-            )}
-            <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", badgeClass)}>
-              {badgeLabel}
+          {currentMonitor.enabled === 0 && (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground ml-2 flex-shrink-0">
+              {t("ssl.disabled")}
+            </span>
+          )}
+        </div>
+
+        {/* Two-status row: Availability + Login */}
+        <div className="flex gap-2 mb-3">
+          {/* Availability */}
+          <div className={cn(
+            "flex-1 flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs",
+            availStatus === "up" ? "bg-blue-500/10" : availStatus === "down" ? "bg-red-500/10" : "bg-muted/40"
+          )}>
+            <Globe className={cn("h-3 w-3 flex-shrink-0",
+              availStatus === "up" ? "text-blue-400" : availStatus === "down" ? "text-red-400" : "text-muted-foreground"
+            )} />
+            <span className="text-muted-foreground">GET</span>
+            <span className={cn("font-semibold ml-auto",
+              availStatus === "up" ? "text-blue-400" : availStatus === "down" ? "text-red-400" : "text-muted-foreground"
+            )}>
+              {availStatus === "up" ? "UP" : availStatus === "down" ? "DOWN" : "—"}
+            </span>
+          </div>
+          {/* Login */}
+          <div className={cn(
+            "flex-1 flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs",
+            loginStatus === "up" ? "bg-green-500/10" : loginStatus === "down" ? "bg-red-500/10" : "bg-muted/40"
+          )}>
+            <LogIn className={cn("h-3 w-3 flex-shrink-0",
+              loginStatus === "up" ? "text-green-400" : loginStatus === "down" ? "text-red-400" : "text-muted-foreground"
+            )} />
+            <span className="text-muted-foreground">POST</span>
+            <span className={cn("font-semibold ml-auto",
+              loginStatus === "up" ? "text-green-400" : loginStatus === "down" ? "text-red-400" : "text-muted-foreground"
+            )}>
+              {loginStatus === "up" ? "UP" : loginStatus === "down" ? "DOWN" : "—"}
             </span>
           </div>
         </div>
 
-        {/* Error message */}
-        {status === "down" && latestResult?.error && (
-          <p className="text-xs text-red-400 bg-red-500/10 rounded-md px-2 py-1.5 mb-3 font-mono break-all">
-            {latestResult.error}
+        {/* Error messages */}
+        {lastAvail?.status === "down" && lastAvail.error && (
+          <p className="text-xs text-blue-400 bg-blue-500/10 rounded-md px-2 py-1 mb-2 font-mono">
+            GET: {lastAvail.error}
+          </p>
+        )}
+        {lastLogin?.status === "down" && lastLogin.error && (
+          <p className="text-xs text-red-400 bg-red-500/10 rounded-md px-2 py-1 mb-2 font-mono">
+            POST: {lastLogin.error}
           </p>
         )}
 
         {/* Stats grid */}
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-3 text-xs">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-3 text-xs">
           <div>
-            <span className="text-muted-foreground">{t("monitors.responseMs")}</span>
-            <p className="font-medium font-mono">
-              {responseMs != null ? `${responseMs}ms` : "—"}
-            </p>
+            <span className="text-muted-foreground">{t("monitors.responseMs")} (GET)</span>
+            <p className="font-medium font-mono">{responseMs != null ? `${responseMs}ms` : "—"}</p>
           </div>
           <div>
             <span className="text-muted-foreground">{t("monitors.uptime24h")}</span>
-            <p className={cn(
-              "font-medium",
-              uptime24h >= 99 ? "text-green-400"
-              : uptime24h >= 90 ? "text-yellow-400"
-              : uptime24h >= 0 ? "text-red-400"
-              : ""
+            <p className={cn("font-medium",
+              uptime24h >= 99 ? "text-green-400" : uptime24h >= 90 ? "text-yellow-400" : uptime24h >= 0 ? "text-red-400" : ""
             )}>
               {uptime24h >= 0 ? `${uptime24h}%` : "—"}
             </p>
@@ -273,17 +308,14 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled,
           <div>
             <span className="text-muted-foreground">{t("monitors.lastCheck")}</span>
             <p className="font-medium">
-              {currentMonitor.last_check
-                ? new Date(currentMonitor.last_check).toLocaleTimeString()
-                : "—"}
+              {currentMonitor.last_check ? new Date(currentMonitor.last_check).toLocaleTimeString() : "—"}
             </p>
           </div>
           <div>
             <span className="text-muted-foreground">{t("monitors.nextCheck")}</span>
             <p className="font-medium">
               {currentMonitor.next_check && currentMonitor.enabled
-                ? new Date(currentMonitor.next_check).toLocaleTimeString()
-                : "—"}
+                ? new Date(currentMonitor.next_check).toLocaleTimeString() : "—"}
             </p>
           </div>
         </div>
@@ -301,48 +333,57 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled,
         </button>
 
         {showHistory && (
-          <div className="py-2">
+          <div className="py-2 space-y-2">
             {historyLoading ? (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                {t("ssl.historyLoading")}
+                <Loader2 className="h-3 w-3 animate-spin" /> {t("ssl.historyLoading")}
               </div>
             ) : !history || history.length === 0 ? (
               <p className="text-xs text-muted-foreground">{t("ssl.historyEmpty")}</p>
             ) : (
-              <div className="space-y-2">
-                <UptimeDots history={history} />
-                <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
-                  {history.slice(0, 20).map((entry) => (
-                    <div key={entry.id} className="flex items-center gap-2 text-xs rounded-md bg-muted/40 px-2 py-1.5">
+              <>
+                {/* Legend */}
+                <div className="flex gap-3 text-[10px] text-muted-foreground">
+                  <span className="flex items-center gap-1"><span className="w-2 h-4 rounded-sm bg-blue-500 inline-block" /> GET up</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-4 rounded-sm bg-green-500 inline-block" /> POST up</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-4 rounded-sm bg-red-500 inline-block" /> down</span>
+                </div>
+                {/* Dots */}
+                <HistoryDots history={history} />
+                {/* Detailed rows */}
+                <div className="space-y-1 max-h-52 overflow-y-auto pr-1 mt-1">
+                  {history.slice(0, 40).map((entry) => (
+                    <div key={entry.id} className="flex items-center gap-2 text-xs rounded-md bg-muted/30 px-2 py-1.5">
+                      <CheckTypeBadge type={entry.check_type ?? "login"} />
                       <span className={cn(
-                        "inline-block w-2 h-2 rounded-full flex-shrink-0",
-                        entry.status === "up" ? "bg-green-400" : "bg-red-400"
-                      )} />
-                      <span className="text-muted-foreground tabular-nums w-32 flex-shrink-0">
-                        {new Date(entry.checked_at).toLocaleString()}
-                      </span>
-                      <span className={cn(
-                        "font-medium w-10 flex-shrink-0",
-                        entry.status === "up" ? "text-green-400" : "text-red-400"
+                        "font-semibold w-8 flex-shrink-0",
+                        entry.status === "up" ? (entry.check_type === "availability" ? "text-blue-400" : "text-green-400") : "text-red-400"
                       )}>
-                        {entry.status === "up" ? t("monitors.status.up") : t("monitors.status.down")}
+                        {entry.status.toUpperCase()}
                       </span>
-                      {entry.response_ms != null && (
-                        <span className="text-muted-foreground">{entry.response_ms}ms</span>
+                      <span className="text-muted-foreground tabular-nums flex-shrink-0">
+                        {new Date(entry.checked_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                      </span>
+                      <span className="text-muted-foreground tabular-nums w-12 flex-shrink-0">
+                        {entry.response_ms != null ? `${entry.response_ms}ms` : "—"}
+                      </span>
+                      {entry.status_code != null && (
+                        <span className="text-muted-foreground/60 tabular-nums flex-shrink-0">
+                          HTTP {entry.status_code}
+                        </span>
                       )}
                       {entry.error && (
-                        <span className="text-red-400 truncate">{entry.error}</span>
+                        <span className="text-red-400 truncate min-w-0">{entry.error}</span>
                       )}
                     </div>
                   ))}
                 </div>
-              </div>
+              </>
             )}
           </div>
         )}
 
-        {/* ── Edit panel ── */}
+        {/* Edit panel */}
         {editing && (
           <>
             <Separator className="my-3" />
@@ -350,70 +391,40 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled,
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
                   <label className="block text-xs text-muted-foreground mb-1">{t("monitors.name")}</label>
-                  <input
-                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    value={editForm.name}
-                    onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-                  />
+                  <input className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
                 </div>
                 <div className="col-span-2">
                   <label className="block text-xs text-muted-foreground mb-1">{t("monitors.url")}</label>
-                  <input
-                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"
-                    value={editForm.url}
-                    onChange={(e) => setEditForm((f) => ({ ...f, url: e.target.value }))}
-                  />
+                  <input className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={editForm.url} onChange={(e) => setEditForm((f) => ({ ...f, url: e.target.value }))} />
                 </div>
                 <div>
                   <label className="block text-xs text-muted-foreground mb-1">{t("monitors.username")}</label>
-                  <input
-                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    value={editForm.username}
-                    onChange={(e) => setEditForm((f) => ({ ...f, username: e.target.value }))}
-                  />
+                  <input className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={editForm.username} onChange={(e) => setEditForm((f) => ({ ...f, username: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">
-                    {t("monitors.password")} <span className="text-muted-foreground/60">(vacío = no cambiar)</span>
-                  </label>
-                  <input
-                    type="password"
-                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    placeholder="••••••••"
-                    value={editForm.password}
-                    onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))}
-                  />
+                  <label className="block text-xs text-muted-foreground mb-1">{t("monitors.password")} <span className="opacity-50">(vacío = no cambiar)</span></label>
+                  <input type="password" className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="••••••••" value={editForm.password} onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))} />
                 </div>
                 <div>
                   <label className="block text-xs text-muted-foreground mb-1">{t("monitors.interval")}</label>
-                  <select
-                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    value={editForm.interval}
-                    onChange={(e) => setEditForm((f) => ({ ...f, interval: e.target.value as AppMonitorInterval }))}
-                  >
-                    {INTERVAL_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
+                  <select className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={editForm.interval} onChange={(e) => setEditForm((f) => ({ ...f, interval: e.target.value as AppMonitorInterval }))}>
+                    {INTERVAL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs text-muted-foreground mb-1">{t("monitors.alertEmail")}</label>
-                  <input
-                    type="email"
-                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    placeholder="you@example.com"
-                    value={editForm.notify_email}
-                    onChange={(e) => setEditForm((f) => ({ ...f, notify_email: e.target.value }))}
-                  />
+                  <input type="email" className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="you@example.com" value={editForm.notify_email} onChange={(e) => setEditForm((f) => ({ ...f, notify_email: e.target.value }))} />
                 </div>
               </div>
               <label className="flex items-center gap-2 text-xs cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={editForm.enabled}
-                  onChange={(e) => setEditForm((f) => ({ ...f, enabled: e.target.checked }))}
-                  className="rounded"
-                />
+                <input type="checkbox" checked={editForm.enabled}
+                  onChange={(e) => setEditForm((f) => ({ ...f, enabled: e.target.checked }))} className="rounded" />
                 <span className="text-muted-foreground">{t("ssl.edit.enabled")}</span>
               </label>
               <div className="flex gap-2">
@@ -422,8 +433,7 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled,
                   {t("common.save")}
                 </Button>
                 <Button size="sm" variant="outline" onClick={cancelEdit}>
-                  <X className="h-3.5 w-3.5 mr-1" />
-                  {t("common.cancel")}
+                  <X className="h-3.5 w-3.5 mr-1" /> {t("common.cancel")}
                 </Button>
               </div>
             </div>
@@ -435,41 +445,21 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled,
           <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" />
-              {currentMonitor.last_check
-                ? new Date(currentMonitor.last_check).toLocaleString()
-                : t("ssl.neverChecked")}
+              {currentMonitor.last_check ? new Date(currentMonitor.last_check).toLocaleString() : t("ssl.neverChecked")}
             </span>
-            <span className="text-muted-foreground capitalize">
-              {currentMonitor.interval} · {currentMonitor.username}
-              {currentMonitor.notify_email && " · ✉"}
-            </span>
+            <span className="capitalize">{currentMonitor.interval} · {currentMonitor.username}{currentMonitor.notify_email && " · ✉"}</span>
           </div>
           <div className="flex gap-1.5">
-            <Button
-              variant={editing ? "default" : "outline"}
-              size="sm"
-              onClick={() => setEditing((v) => !v)}
-              title={editing ? t("common.cancel") : "Edit"}
-            >
+            <Button variant={editing ? "default" : "outline"} size="sm" onClick={() => setEditing((v) => !v)}>
               <Pencil className="h-3.5 w-3.5" />
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleToggle}
-              disabled={toggling}
-              title={currentMonitor.enabled ? t("monitors.disable") : t("monitors.enable")}
-            >
-              {toggling
-                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                : <Power className={cn("h-3.5 w-3.5", currentMonitor.enabled ? "text-green-400" : "text-muted-foreground")} />
-              }
+            <Button variant="outline" size="sm" onClick={handleToggle} disabled={toggling}
+              title={currentMonitor.enabled ? t("monitors.disable") : t("monitors.enable")}>
+              {toggling ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <Power className={cn("h-3.5 w-3.5", currentMonitor.enabled ? "text-green-400" : "text-muted-foreground")} />}
             </Button>
             <Button variant="outline" size="sm" onClick={handleCheckNow} disabled={checking}>
-              {checking
-                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                : <RefreshCw className="h-3.5 w-3.5" />
-              }
+              {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
             </Button>
             <Button variant="outline" size="sm" onClick={() => onDelete(currentMonitor.id)}>
               <Trash2 className="h-3.5 w-3.5 text-destructive" />
