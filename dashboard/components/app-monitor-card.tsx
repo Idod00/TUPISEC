@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Activity, Trash2, RefreshCw, Loader2,
   CheckCircle, XCircle, Clock,
@@ -84,6 +84,21 @@ export function AppMonitorCard({ monitor, onDelete, onCheckNow, onToggleEnabled,
   const [toggling, setToggling] = useState(false);
   const [saving, setSaving] = useState(false);
   const [currentMonitor, setCurrentMonitor] = useState(monitor);
+
+  // Sync scheduling fields when parent re-fetches (e.g. after Check Now or scheduler run)
+  useEffect(() => {
+    setCurrentMonitor((m) => ({
+      ...m,
+      next_check: monitor.next_check,
+      last_check: monitor.last_check,
+      last_status: monitor.last_status,
+      last_login_status: monitor.last_login_status,
+      last_response_ms: monitor.last_response_ms,
+      interval: monitor.interval,
+      cron_expr: monitor.cron_expr,
+    }));
+  }, [monitor.next_check, monitor.last_check, monitor.interval]);
+
   const [lastAvail, setLastAvail] = useState<AppCheckResult | null>(null);
   const [lastLogin, setLastLogin] = useState<AppCheckResult | null>(null);
 
