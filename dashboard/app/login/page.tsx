@@ -1,14 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { Shield, Loader2, ArrowRight, ArrowLeft, Lock, Eye, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type Step = "landing" | "login" | "setup";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [step, setStep] = useState<Step>("landing");
   const [hasUsers, setHasUsers] = useState<boolean | null>(null);
 
@@ -45,8 +43,7 @@ export default function LoginPage() {
         body: JSON.stringify({ username, password }),
       });
       if (res.ok) {
-        router.push("/");
-        router.refresh();
+        window.location.href = "/";
       } else {
         const data = await res.json();
         setError(data.error || "Invalid credentials");
@@ -79,8 +76,7 @@ export default function LoginPage() {
         body: JSON.stringify({ username: setupUsername.trim(), password: setupPass }),
       });
       if (res.ok) {
-        router.push("/");
-        router.refresh();
+        window.location.href = "/";
       } else {
         const data = await res.json();
         setError(data.error || "Setup failed");
