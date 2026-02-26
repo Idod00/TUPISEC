@@ -30,6 +30,7 @@ services:
     environment:
       DATABASE_URL: postgresql://tupisec:changeme123@postgres:5432/tupisec
       TUPISEC_SECRET: change-me-in-production
+      TUPISEC_AUTH_ENABLED: "true"
       NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: "1"
       # Optional: set your public URL for webhook callback links
