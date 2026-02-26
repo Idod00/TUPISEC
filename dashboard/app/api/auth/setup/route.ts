@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     const response = NextResponse.json({ ok: true });
     response.cookies.set("tupisec_session", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: process.env.TUPISEC_COOKIE_SECURE === "true",
       sameSite: "lax",
       maxAge: 60 * 60 * 24 * 7,
       path: "/",
