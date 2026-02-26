@@ -36,7 +36,7 @@ services:
       # Optional: set your public URL for webhook callback links
       # NEXT_PUBLIC_BASE_URL: https://tupisec.example.com
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/scans').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/auth/status').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 3
