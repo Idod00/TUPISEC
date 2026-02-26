@@ -9,15 +9,28 @@ import { useTheme } from "@/lib/theme/context";
 import { useEffect, useState } from "react";
 import type { TranslationKey } from "@/lib/i18n/translations";
 
-const links: { href: string; key: TranslationKey; icon: React.ElementType }[] = [
-  { href: "/", key: "nav.dashboard", icon: Home },
-  { href: "/history", key: "nav.history", icon: History },
-  { href: "/batch", key: "nav.batch", icon: Layers },
-  { href: "/schedules", key: "nav.schedules", icon: Clock },
-  { href: "/ssl", key: "nav.ssl", icon: LockKeyhole },
-  { href: "/monitors", key: "nav.monitors", icon: Activity },
-  { href: "/settings", key: "nav.settings", icon: Settings2 },
+type UserRole = "admin" | "monitoreo" | "seguridad";
+
+interface MeData {
+  username: string;
+  role: UserRole;
+}
+
+const allLinks: { href: string; key: TranslationKey; icon: React.ElementType; roles: UserRole[] }[] = [
+  { href: "/", key: "nav.dashboard", icon: Home, roles: ["admin", "seguridad"] },
+  { href: "/history", key: "nav.history", icon: History, roles: ["admin", "seguridad"] },
+  { href: "/batch", key: "nav.batch", icon: Layers, roles: ["admin", "seguridad"] },
+  { href: "/schedules", key: "nav.schedules", icon: Clock, roles: ["admin", "seguridad"] },
+  { href: "/ssl", key: "nav.ssl", icon: LockKeyhole, roles: ["admin", "monitoreo"] },
+  { href: "/monitors", key: "nav.monitors", icon: Activity, roles: ["admin", "monitoreo"] },
+  { href: "/settings", key: "nav.settings", icon: Settings2, roles: ["admin"] },
 ];
+
+const roleBadge: Record<UserRole, { label: string; className: string }> = {
+  admin: { label: "admin", className: "bg-violet-500/15 text-violet-400 border-violet-500/30" },
+  monitoreo: { label: "monitoreo", className: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
+  seguridad: { label: "seguridad", className: "bg-green-500/15 text-green-400 border-green-500/30" },
+};
 
 export function NavBar() {
   const pathname = usePathname();
@@ -25,6 +38,7 @@ export function NavBar() {
   const { lang, setLang, t } = useI18n();
   const { theme, toggleTheme } = useTheme();
   const [authEnabled, setAuthEnabled] = useState(false);
+  const [me, setMe] = useState<MeData | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/status")
@@ -33,11 +47,25 @@ export function NavBar() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (!authEnabled) return;
+    fetch("/api/auth/me")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data?.username) setMe({ username: data.username, role: data.role }); })
+      .catch(() => {});
+  }, [authEnabled]);
+
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
     router.refresh();
   };
+
+  const visibleLinks = authEnabled && me
+    ? allLinks.filter((l) => l.roles.includes(me.role))
+    : allLinks;
+
+  const badge = me ? roleBadge[me.role] : null;
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-md">
@@ -47,7 +75,7 @@ export function NavBar() {
           <span className="text-lg">TupiSec</span>
         </Link>
         <nav className="flex items-center gap-1 flex-1">
-          {links.map((link) => {
+          {visibleLinks.map((link) => {
             const Icon = link.icon;
             const active =
               link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
@@ -68,6 +96,16 @@ export function NavBar() {
             );
           })}
         </nav>
+
+        {/* User info badge (when auth enabled) */}
+        {authEnabled && me && badge && (
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-sm font-medium text-foreground">{me.username}</span>
+            <span className={cn("rounded-full border px-2 py-0.5 text-xs font-medium", badge.className)}>
+              {badge.label}
+            </span>
+          </div>
+        )}
 
         {/* Language toggle */}
         <div className="flex items-center rounded-md border border-border/60 overflow-hidden text-xs font-medium">

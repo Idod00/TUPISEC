@@ -1,27 +1,27 @@
 import { NextResponse } from "next/server";
-import { getSetting } from "@/lib/db";
+import { getUserByUsername, updateUserLastLogin } from "@/lib/db";
 import { verifyPassword, createSessionToken } from "@/lib/crypto";
 
 export async function POST(request: Request) {
   try {
-    const { password } = await request.json();
-    if (!password) return NextResponse.json({ error: "Password required" }, { status: 400 });
-
-    const [hash, salt] = await Promise.all([
-      getSetting("auth_password_hash"),
-      getSetting("auth_password_salt"),
-    ]);
-
-    if (!hash || !salt) {
-      return NextResponse.json({ error: "Authentication not configured. Use /api/auth/setup first." }, { status: 403 });
+    const { username, password } = await request.json();
+    if (!username || !password) {
+      return NextResponse.json({ error: "Username and password required" }, { status: 400 });
     }
 
-    const valid = verifyPassword(password, hash, salt);
+    const user = await getUserByUsername(username);
+    if (!user) {
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+    }
+
+    const valid = verifyPassword(password, user.password_hash, user.password_salt);
     if (!valid) {
-      return NextResponse.json({ error: "Invalid password" }, { status: 401 });
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
 
-    const token = createSessionToken();
+    await updateUserLastLogin(user.id);
+
+    const token = createSessionToken(user.id, user.role);
     const response = NextResponse.json({ ok: true });
     response.cookies.set("tupisec_session", token, {
       httpOnly: true,

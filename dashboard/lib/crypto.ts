@@ -41,13 +41,30 @@ export function decryptValue(value: string): string {
 
 export const ENCRYPTED_KEYS = new Set(["virustotal_api_key", "shodan_api_key", "smtp_pass"]);
 
-export function createSessionToken(): string {
+export function createSessionToken(userId: string, role: string): string {
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const nonce = crypto.randomBytes(16).toString("hex");
   const hmac = crypto.createHmac("sha256", SECRET + ":session")
-    .update(`${timestamp}:${nonce}`)
+    .update(`${userId}|${role}|${timestamp}|${nonce}`)
     .digest("hex");
-  return `${timestamp}:${nonce}:${hmac}`;
+  return `${userId}|${role}|${timestamp}|${nonce}|${hmac}`;
+}
+
+export function verifySessionToken(token: string): { userId: string; role: string } | null {
+  const parts = token.split("|");
+  if (parts.length !== 5) return null;
+  const [userId, role, timestamp, nonce, mac] = parts;
+  const ts = parseInt(timestamp, 10);
+  if (isNaN(ts) || Date.now() / 1000 - ts > 86400 * 7) return null;
+  const expected = crypto.createHmac("sha256", SECRET + ":session")
+    .update(`${userId}|${role}|${timestamp}|${nonce}`)
+    .digest("hex");
+  try {
+    if (!crypto.timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(mac, "hex"))) return null;
+    return { userId, role };
+  } catch {
+    return null;
+  }
 }
 
 export function hashPassword(password: string): { hash: string; salt: string } {

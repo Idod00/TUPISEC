@@ -194,6 +194,18 @@ export interface SSLCheckHistoryRecord {
   result_json: string;
 }
 
+export type UserRole = "admin" | "monitoreo" | "seguridad";
+
+export interface UserRecord {
+  id: string;
+  username: string;
+  password_hash: string;
+  password_salt: string;
+  role: UserRole;
+  created_at: string;
+  last_login: string | null;
+}
+
 export type AppMonitorInterval = "5min" | "15min" | "30min" | "1h" | "6h" | "1d";
 
 export interface AppMonitorRecord {

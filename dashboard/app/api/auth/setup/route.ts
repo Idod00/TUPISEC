@@ -1,30 +1,32 @@
 import { NextResponse } from "next/server";
-import { getSetting, setSetting } from "@/lib/db";
+import { countUsers, createUser } from "@/lib/db";
 import { hashPassword, createSessionToken } from "@/lib/crypto";
+import { randomUUID } from "crypto";
 
 export async function POST(request: Request) {
   if (process.env.TUPISEC_AUTH_ENABLED !== "true") {
     return NextResponse.json({ error: "Auth not enabled. Set TUPISEC_AUTH_ENABLED=true to enable." }, { status: 403 });
   }
 
-  const existing = await getSetting("auth_password_hash");
-  if (existing) {
-    return NextResponse.json({ error: "Password already configured. Use /api/auth/change-password to update it." }, { status: 409 });
+  const existing = await countUsers();
+  if (existing > 0) {
+    return NextResponse.json({ error: "Users already exist. Use the users API to manage accounts." }, { status: 409 });
   }
 
   try {
-    const { password } = await request.json();
+    const { username, password } = await request.json();
+    if (!username || username.trim().length < 3) {
+      return NextResponse.json({ error: "Username must be at least 3 characters" }, { status: 400 });
+    }
     if (!password || password.length < 8) {
       return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 });
     }
 
     const { hash, salt } = hashPassword(password);
-    await Promise.all([
-      setSetting("auth_password_hash", hash),
-      setSetting("auth_password_salt", salt),
-    ]);
+    const id = randomUUID();
+    await createUser(id, username.trim(), hash, salt, "admin");
 
-    const token = createSessionToken();
+    const token = createSessionToken(id, "admin");
     const response = NextResponse.json({ ok: true });
     response.cookies.set("tupisec_session", token, {
       httpOnly: true,

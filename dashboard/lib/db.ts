@@ -2,7 +2,7 @@ import { Pool } from "pg";
 import path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
-import type { ScanRecord, ScanReport, BatchRecord, FindingStatusRecord, FindingStatusValue, ScheduleRecord, NotificationConfig, EnrichmentData, SSLMonitorRecord, SSLCheckHistoryRecord, SSLCheckResult, AppMonitorRecord, AppCheckHistoryRecord } from "./types";
+import type { ScanRecord, ScanReport, BatchRecord, FindingStatusRecord, FindingStatusValue, ScheduleRecord, NotificationConfig, EnrichmentData, SSLMonitorRecord, SSLCheckHistoryRecord, SSLCheckResult, AppMonitorRecord, AppCheckHistoryRecord, UserRecord, UserRole } from "./types";
 
 const execAsync = promisify(exec);
 
@@ -149,6 +149,16 @@ export async function initDb(): Promise<void> {
       error TEXT,
       check_type TEXT NOT NULL DEFAULT 'login',
       response_detail TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      password_salt TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'seguridad',
+      created_at TEXT NOT NULL,
+      last_login TEXT
     );
   `);
 }
@@ -691,4 +701,68 @@ export async function getAppUptime(monitorId: string, hours = 24): Promise<numbe
   const row = rows[0];
   if (!row || Number(row.total) === 0) return -1;
   return Math.round((Number(row.up_count) / Number(row.total)) * 100);
+}
+
+// ─── Users ─────────────────────────────────────────────────────────
+
+export async function createUser(id: string, username: string, passwordHash: string, passwordSalt: string, role: UserRole): Promise<UserRecord> {
+  const now = new Date().toISOString();
+  const { rows } = await getPool().query(
+    `INSERT INTO users (id, username, password_hash, password_salt, role, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING *`,
+    [id, username, passwordHash, passwordSalt, role, now]
+  );
+  return rows[0];
+}
+
+export async function getUserByUsername(username: string): Promise<UserRecord | undefined> {
+  const { rows } = await getPool().query(
+    `SELECT * FROM users WHERE username = $1`,
+    [username]
+  );
+  return rows[0];
+}
+
+export async function getUserById(id: string): Promise<UserRecord | undefined> {
+  const { rows } = await getPool().query(
+    `SELECT * FROM users WHERE id = $1`,
+    [id]
+  );
+  return rows[0];
+}
+
+export async function listUsers(): Promise<Omit<UserRecord, "password_hash" | "password_salt">[]> {
+  const { rows } = await getPool().query(
+    `SELECT id, username, role, created_at, last_login FROM users ORDER BY created_at ASC`
+  );
+  return rows;
+}
+
+export async function deleteUser(id: string): Promise<boolean> {
+  const result = await getPool().query(`DELETE FROM users WHERE id = $1`, [id]);
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function updateUserRole(id: string, role: UserRole): Promise<void> {
+  await getPool().query(`UPDATE users SET role = $1 WHERE id = $2`, [role, id]);
+}
+
+export async function updateUserPassword(id: string, passwordHash: string, passwordSalt: string): Promise<void> {
+  await getPool().query(
+    `UPDATE users SET password_hash = $1, password_salt = $2 WHERE id = $3`,
+    [passwordHash, passwordSalt, id]
+  );
+}
+
+export async function countUsers(): Promise<number> {
+  const { rows } = await getPool().query(`SELECT COUNT(*) AS count FROM users`);
+  return Number(rows[0]?.count ?? 0);
+}
+
+export async function updateUserLastLogin(id: string): Promise<void> {
+  await getPool().query(
+    `UPDATE users SET last_login = $1 WHERE id = $2`,
+    [new Date().toISOString(), id]
+  );
 }

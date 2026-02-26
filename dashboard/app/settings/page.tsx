@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Save, Loader2, Key, Bell, Mail, Send, CheckCircle, XCircle, Database, HardDrive, Lock, Trash2, Copy } from "lucide-react";
+import { Save, Loader2, Key, Bell, Mail, Send, CheckCircle, XCircle, Database, HardDrive, Lock, Trash2, Copy, Users, UserPlus, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NotificationsManager } from "@/components/notifications-manager";
 import { Separator } from "@/components/ui/separator";
@@ -25,6 +25,14 @@ interface ApiTokenEntry {
   token_prefix: string;
   created_at: string;
   last_used: string | null;
+}
+
+interface UserEntry {
+  id: string;
+  username: string;
+  role: string;
+  created_at: string;
+  last_login: string | null;
 }
 
 export default function SettingsPage() {
@@ -70,6 +78,17 @@ export default function SettingsPage() {
   const [newTokenValue, setNewTokenValue] = useState<string | null>(null);
   const [copiedToken, setCopiedToken] = useState(false);
 
+  // Current user role (for showing admin-only sections)
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+
+  // Users management (admin only)
+  const [users, setUsers] = useState<UserEntry[]>([]);
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserPass, setNewUserPass] = useState("");
+  const [newUserRole, setNewUserRole] = useState("seguridad");
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [userError, setUserError] = useState("");
+
   const loadSettings = useCallback(() => {
     fetch("/api/settings")
       .then((r) => r.json())
@@ -111,12 +130,31 @@ export default function SettingsPage() {
       .catch(() => {});
   }, []);
 
+  const loadCurrentUser = useCallback(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data?.role) setCurrentUserRole(data.role); })
+      .catch(() => {});
+  }, []);
+
+  const loadUsers = useCallback(() => {
+    fetch("/api/auth/users")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => { if (Array.isArray(data)) setUsers(data); })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     loadSettings();
     loadAuthStatus();
     loadBackups();
     loadTokens();
-  }, [loadSettings, loadAuthStatus, loadBackups, loadTokens]);
+    loadCurrentUser();
+  }, [loadSettings, loadAuthStatus, loadBackups, loadTokens, loadCurrentUser]);
+
+  useEffect(() => {
+    if (currentUserRole === "admin") loadUsers();
+  }, [currentUserRole, loadUsers]);
 
   const isVtSet = settings.find((s) => s.key === "virustotal_api_key")?.set ?? false;
   const isShodanSet = settings.find((s) => s.key === "shodan_api_key")?.set ?? false;
@@ -272,6 +310,42 @@ export default function SettingsPage() {
     } catch {
       // ignore
     }
+  };
+
+  const handleCreateUser = async () => {
+    if (!newUserName.trim() || !newUserPass.trim()) return;
+    setCreatingUser(true);
+    setUserError("");
+    try {
+      const res = await fetch("/api/auth/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: newUserName.trim(), password: newUserPass, role: newUserRole }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setNewUserName(""); setNewUserPass(""); setNewUserRole("seguridad");
+        loadUsers();
+      } else {
+        setUserError(data.error || "Failed to create user");
+      }
+    } finally {
+      setCreatingUser(false);
+    }
+  };
+
+  const handleDeleteUser = async (id: string) => {
+    await fetch(`/api/auth/users/${id}`, { method: "DELETE" });
+    setUsers((prev) => prev.filter((u) => u.id !== id));
+  };
+
+  const handleChangeUserRole = async (id: string, role: string) => {
+    const res = await fetch(`/api/auth/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role }),
+    });
+    if (res.ok) loadUsers();
   };
 
   function formatBytes(bytes: number): string {
@@ -661,6 +735,106 @@ export default function SettingsPage() {
         </div>
         <NotificationsManager />
       </section>
+
+      {/* Users Section — admin only */}
+      {currentUserRole === "admin" && (
+        <>
+          <Separator className="my-8" />
+          <section className="mb-8">
+            <div className="flex items-center gap-2 mb-1">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-lg font-semibold">User Management</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Manage dashboard users. Each role controls which sections a user can access.
+            </p>
+
+            <div className="rounded-lg border border-border/60 bg-card p-4 space-y-4">
+              {/* Role legend */}
+              <div className="flex flex-wrap gap-3 text-xs text-muted-foreground border-b border-border/40 pb-3">
+                <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-violet-400" />admin — full access</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-blue-400" />monitoreo — SSL &amp; Monitors only</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-green-400" />seguridad — Panel, History, Batch, Schedules</span>
+              </div>
+
+              {/* Create user form */}
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground font-medium">Create new user</p>
+                <div className="flex gap-2 flex-wrap">
+                  <input
+                    className="flex-1 min-w-[120px] rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="Username"
+                    value={newUserName}
+                    onChange={(e) => setNewUserName(e.target.value)}
+                  />
+                  <input
+                    type="password"
+                    className="flex-1 min-w-[120px] rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="Password (min 8)"
+                    value={newUserPass}
+                    onChange={(e) => setNewUserPass(e.target.value)}
+                  />
+                  <select
+                    className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={newUserRole}
+                    onChange={(e) => setNewUserRole(e.target.value)}
+                  >
+                    <option value="admin">admin</option>
+                    <option value="monitoreo">monitoreo</option>
+                    <option value="seguridad">seguridad</option>
+                  </select>
+                  <Button size="sm" onClick={handleCreateUser} disabled={creatingUser || !newUserName.trim() || !newUserPass.trim()}>
+                    {creatingUser ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4 mr-1.5" />}
+                    Create
+                  </Button>
+                </div>
+                {userError && <p className="text-sm text-red-400">{userError}</p>}
+              </div>
+
+              {/* User list */}
+              {users.length > 0 ? (
+                <div className="space-y-1">
+                  {users.map((u) => (
+                    <div key={u.id} className="flex items-center justify-between rounded-md bg-background px-3 py-2 gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <ShieldCheck className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{u.username}</p>
+                          <p className="text-xs text-muted-foreground">
+                            created {new Date(u.created_at).toLocaleDateString()}
+                            {u.last_login && ` · last login ${new Date(u.last_login).toLocaleDateString()}`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <select
+                          className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                          value={u.role}
+                          onChange={(e) => handleChangeUserRole(u.id, e.target.value)}
+                        >
+                          <option value="admin">admin</option>
+                          <option value="monitoreo">monitoreo</option>
+                          <option value="seguridad">seguridad</option>
+                        </select>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-red-400"
+                          onClick={() => handleDeleteUser(u.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No users yet.</p>
+              )}
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 }
