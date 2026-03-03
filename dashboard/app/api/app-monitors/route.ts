@@ -22,11 +22,20 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, url, username, password, interval, notify_email } = body;
+    const { name, url, username, password, interval, notify_email, monitor_type } = body;
 
-    if (!name || !url || !username || !password || !interval) {
+    const type: "availability" | "login" =
+      monitor_type === "availability" ? "availability" : "login";
+
+    if (!name || !url || !interval) {
       return NextResponse.json(
-        { error: "name, url, username, password, and interval are required" },
+        { error: "name, url, and interval are required" },
+        { status: 400 }
+      );
+    }
+    if (type === "login" && (!username || !password)) {
+      return NextResponse.json(
+        { error: "username and password are required for login monitors" },
         { status: 400 }
       );
     }
@@ -40,14 +49,15 @@ export async function POST(request: Request) {
     }
 
     const cronExpr = APP_CRON_MAP[interval as AppMonitorInterval];
-    const passwordEnc = encryptValue(password);
+    const passwordEnc = type === "login" ? encryptValue(password) : "";
     const now = new Date().toISOString();
 
     const monitor = await createAppMonitor({
       id: randomUUID(),
       name: name.trim(),
       url: normalizeUrl(url),
-      username: username.trim(),
+      monitor_type: type,
+      username: type === "login" ? username.trim() : "",
       password_enc: passwordEnc,
       interval: interval as AppMonitorInterval,
       cron_expr: cronExpr,

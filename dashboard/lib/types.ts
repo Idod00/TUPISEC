@@ -212,6 +212,7 @@ export interface AppMonitorRecord {
   id: string;
   name: string;
   url: string;
+  monitor_type: "availability" | "login";
   username: string;
   password_enc: string;
   interval: AppMonitorInterval;

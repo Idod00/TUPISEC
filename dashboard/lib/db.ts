@@ -125,8 +125,9 @@ export async function initDb(): Promise<void> {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       url TEXT NOT NULL,
-      username TEXT NOT NULL,
-      password_enc TEXT NOT NULL,
+      monitor_type TEXT NOT NULL DEFAULT 'login',
+      username TEXT NOT NULL DEFAULT '',
+      password_enc TEXT NOT NULL DEFAULT '',
       interval TEXT NOT NULL,
       cron_expr TEXT NOT NULL,
       enabled INTEGER DEFAULT 1,
@@ -161,6 +162,11 @@ export async function initDb(): Promise<void> {
       last_login TEXT
     );
   `);
+
+  // Migrate: add monitor_type column to existing app_monitors tables
+  await pool.query(`
+    ALTER TABLE app_monitors ADD COLUMN IF NOT EXISTS monitor_type TEXT NOT NULL DEFAULT 'login'
+  `).catch(() => {});
 }
 
 // ─── Scans ─────────────────────────────────────────────────────────
@@ -596,11 +602,12 @@ export async function touchApiToken(id: string): Promise<void> {
 
 export async function createAppMonitor(monitor: Omit<AppMonitorRecord, "last_check" | "next_check" | "last_status" | "last_login_status" | "last_response_ms">): Promise<AppMonitorRecord> {
   const { rows } = await getPool().query(
-    `INSERT INTO app_monitors (id, name, url, username, password_enc, interval, cron_expr, enabled, created_at, notify_email)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    `INSERT INTO app_monitors (id, name, url, monitor_type, username, password_enc, interval, cron_expr, enabled, created_at, notify_email)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING *`,
     [
-      monitor.id, monitor.name, monitor.url, monitor.username, monitor.password_enc,
+      monitor.id, monitor.name, monitor.url, monitor.monitor_type ?? "login",
+      monitor.username, monitor.password_enc,
       monitor.interval, monitor.cron_expr, monitor.enabled, monitor.created_at, monitor.notify_email ?? null,
     ]
   );

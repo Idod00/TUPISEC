@@ -69,7 +69,7 @@ function EditModal({
 }: {
   monitor: SafeMonitor;
   onSave: (fields: {
-    name?: string; url?: string; username?: string; password?: string;
+    name?: string; url?: string; monitor_type?: string; username?: string; password?: string;
     interval?: AppMonitorInterval; notify_email?: string | null; enabled?: number;
   }) => Promise<void>;
   onClose: () => void;
@@ -79,6 +79,7 @@ function EditModal({
   const [form, setForm] = useState({
     name: monitor.name,
     url: monitor.url,
+    monitor_type: (monitor.monitor_type ?? "login") as "availability" | "login",
     username: monitor.username,
     password: "",
     interval: monitor.interval,
@@ -92,12 +93,13 @@ function EditModal({
       const fields: Parameters<typeof onSave>[0] = {
         name: form.name,
         url: form.url,
-        username: form.username,
+        monitor_type: form.monitor_type,
+        username: form.monitor_type === "login" ? form.username : "",
         interval: form.interval,
         notify_email: form.notify_email || null,
         enabled: form.enabled ? 1 : 0,
       };
-      if (form.password) fields.password = form.password;
+      if (form.monitor_type === "login" && form.password) fields.password = form.password;
       await onSave(fields);
       onClose();
     } finally {
@@ -138,26 +140,43 @@ function EditModal({
                 onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
               />
             </div>
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">{t("monitors.username")}</label>
-              <input
-                className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                value={form.username}
-                onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
-              />
+            <div className="col-span-2">
+              <label className="block text-xs text-muted-foreground mb-1">Tipo</label>
+              <div className="flex rounded-md border border-border overflow-hidden w-fit text-xs">
+                <button type="button" onClick={() => setForm((f) => ({ ...f, monitor_type: "availability" }))}
+                  className={cn("px-3 py-1.5 transition-colors", form.monitor_type === "availability" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
+                  Solo disponibilidad
+                </button>
+                <button type="button" onClick={() => setForm((f) => ({ ...f, monitor_type: "login" }))}
+                  className={cn("px-3 py-1.5 transition-colors", form.monitor_type === "login" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
+                  Login
+                </button>
+              </div>
             </div>
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">
-                {t("monitors.password")} <span className="opacity-50">(vacío = no cambiar)</span>
-              </label>
-              <input
-                type="password"
-                className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                placeholder="••••••••"
-                value={form.password}
-                onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-              />
-            </div>
+            {form.monitor_type === "login" && (
+              <>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">{t("monitors.username")}</label>
+                  <input
+                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={form.username}
+                    onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">
+                    {t("monitors.password")} <span className="opacity-50">(vacío = no cambiar)</span>
+                  </label>
+                  <input
+                    type="password"
+                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="••••••••"
+                    value={form.password}
+                    onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                  />
+                </div>
+              </>
+            )}
             <div>
               <label className="block text-xs text-muted-foreground mb-1">{t("monitors.interval")}</label>
               <select
@@ -230,6 +249,7 @@ export default function MonitorsPage() {
   const [form, setForm] = useState({
     name: "",
     url: "",
+    monitor_type: "login" as "availability" | "login",
     username: "",
     password: "",
     interval: "15min" as AppMonitorInterval,
@@ -247,7 +267,8 @@ export default function MonitorsPage() {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name || !form.url || !form.username || !form.password) return;
+    if (!form.name || !form.url) return;
+    if (form.monitor_type === "login" && (!form.username || !form.password)) return;
     setSubmitting(true);
     try {
       const res = await fetch("/api/app-monitors", {
@@ -257,7 +278,7 @@ export default function MonitorsPage() {
       });
       if (res.ok) {
         setShowForm(false);
-        setForm({ name: "", url: "", username: "", password: "", interval: "15min", notify_email: "" });
+        setForm({ name: "", url: "", monitor_type: "login", username: "", password: "", interval: "15min", notify_email: "" });
         load();
       }
     } finally {
@@ -368,33 +389,61 @@ export default function MonitorsPage() {
               <label className="block text-xs text-muted-foreground mb-1">{t("monitors.url")}</label>
               <input
                 className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"
-                placeholder="https://app.example.com/login"
+                placeholder="https://app.example.com"
                 value={form.url}
                 onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
                 required
               />
             </div>
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">{t("monitors.username")}</label>
-              <input
-                className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                placeholder="admin"
-                value={form.username}
-                onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
-                required
-              />
+            <div className="col-span-1 sm:col-span-2">
+              <label className="block text-xs text-muted-foreground mb-1">Tipo de monitoreo</label>
+              <div className="flex rounded-md border border-border overflow-hidden w-fit text-sm">
+                <button
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, monitor_type: "availability" }))}
+                  className={cn("px-4 py-1.5 transition-colors", form.monitor_type === "availability" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+                >
+                  Solo disponibilidad
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, monitor_type: "login" }))}
+                  className={cn("px-4 py-1.5 transition-colors", form.monitor_type === "login" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+                >
+                  Login
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {form.monitor_type === "availability"
+                  ? "Verifica que la página responda (HTTP). No requiere credenciales."
+                  : "Verifica disponibilidad y además prueba el inicio de sesión."}
+              </p>
             </div>
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">{t("monitors.password")}</label>
-              <input
-                type="password"
-                className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                placeholder="••••••••"
-                value={form.password}
-                onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                required
-              />
-            </div>
+            {form.monitor_type === "login" && (
+              <>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">{t("monitors.username")}</label>
+                  <input
+                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="admin"
+                    value={form.username}
+                    onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">{t("monitors.password")}</label>
+                  <input
+                    type="password"
+                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="••••••••"
+                    value={form.password}
+                    onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                    required
+                  />
+                </div>
+              </>
+            )}
             <div>
               <label className="block text-xs text-muted-foreground mb-1">{t("monitors.interval")}</label>
               <select

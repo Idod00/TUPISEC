@@ -35,11 +35,12 @@ export async function PATCH(
 
   try {
     const body = await request.json();
-    const { name, url, username, password, interval, enabled, notify_email } = body;
+    const { name, url, username, password, interval, enabled, notify_email, monitor_type } = body;
 
     const fields: Record<string, unknown> = {};
     if (name !== undefined) fields.name = name;
     if (url !== undefined) fields.url = normalizeUrl(url);
+    if (monitor_type !== undefined) fields.monitor_type = monitor_type;
     if (username !== undefined) fields.username = username;
     if (password !== undefined) fields.password_enc = encryptValue(password);
     if (interval !== undefined) {
