@@ -1,17 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   CheckCircle, XCircle, Activity,
   Loader2, RefreshCw, Trash2, Pencil,
   Power, Globe, LogIn,
   ChevronUp, ChevronDown, ArrowUpDown,
-  ExternalLink,
+  ExternalLink, History,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/context";
-import type { AppMonitorRecord, AppCheckResult, AppMonitorInterval } from "@/lib/types";
+import type { AppMonitorRecord, AppCheckResult, AppCheckHistoryRecord, AppMonitorInterval } from "@/lib/types";
 
 type SafeMonitor = Omit<AppMonitorRecord, "password_enc">;
 
@@ -78,13 +78,88 @@ function displayUrl(url: string): string {
   }
 }
 
+// ─── History panel ────────────────────────────────────────────────────
+
+function AppHistoryPanel({ monitorId }: { monitorId: string }) {
+  const [history, setHistory] = useState<AppCheckHistoryRecord[] | null>(null);
+  const [uptime24h, setUptime24h] = useState<number>(-1);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/app-monitors/${monitorId}/history`)
+      .then(r => r.ok ? r.json() : { history: [], uptime24h: -1 })
+      .then(data => {
+        if (!cancelled) {
+          setHistory(data.history ?? []);
+          setUptime24h(data.uptime24h ?? -1);
+        }
+      })
+      .catch(() => { if (!cancelled) setHistory([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [monitorId]);
+
+  if (loading) return (
+    <div className="flex items-center gap-2 px-4 py-2.5 text-xs text-muted-foreground">
+      <Loader2 className="h-3 w-3 animate-spin" /><span>Loading history…</span>
+    </div>
+  );
+  if (!history || history.length === 0) return (
+    <p className="px-4 py-2.5 text-xs text-muted-foreground">No check history yet.</p>
+  );
+
+  return (
+    <div>
+      {uptime24h >= 0 && (
+        <div className="px-4 pt-2 pb-1 flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Uptime 24h:</span>
+          <span className={cn(
+            "text-xs font-semibold",
+            uptime24h >= 99 ? "text-green-400" : uptime24h >= 95 ? "text-yellow-400" : "text-red-400"
+          )}>{uptime24h.toFixed(1)}%</span>
+        </div>
+      )}
+      <div className="max-h-52 overflow-y-auto divide-y divide-border/30">
+        {history.map((h) => {
+          const isUp = h.status === "up";
+          const dotColor = isUp ? "bg-green-400" : "bg-red-400";
+          const textColor = isUp ? "text-green-400" : "text-red-400";
+          const TypeIcon = h.check_type === "availability" ? Globe : LogIn;
+          const typeLabel = h.check_type === "availability" ? "GET" : "POST";
+          const typePillColor = h.check_type === "availability"
+            ? (isUp ? "text-blue-400 bg-blue-500/10" : "text-red-400 bg-red-500/10")
+            : (isUp ? "text-green-400 bg-green-500/10" : "text-red-400 bg-red-500/10");
+          return (
+            <div key={h.id} className="flex items-center gap-2 px-4 py-1.5 text-xs">
+              <span className={cn("inline-block w-2 h-2 rounded-full flex-shrink-0", dotColor)} />
+              <span className={cn(
+                "inline-flex items-center gap-0.5 rounded px-1 py-0.5 font-semibold font-mono text-[10px] flex-shrink-0",
+                typePillColor
+              )}>
+                <TypeIcon className="h-2.5 w-2.5" />{typeLabel}
+              </span>
+              <span className={cn("font-semibold uppercase w-6 flex-shrink-0", textColor)}>{h.status}</span>
+              <span className="text-muted-foreground">{new Date(h.checked_at).toLocaleString()}</span>
+              {h.response_ms != null && (
+                <span className="ml-auto text-muted-foreground font-mono">{h.response_ms}ms</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── COMPACT VIEW ────────────────────────────────────────────────────
-// Small dense cards — 2-4 columns, status + GET/POST pills + ms + actions
 
 export function AppCompactCard({ monitor, onDelete, onCheckNow, onToggleEnabled }: { monitor: SafeMonitor } & Pick<AppMonitorActions, "onDelete" | "onCheckNow" | "onToggleEnabled">) {
   const [checking, setChecking] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [current, setCurrent] = useState(monitor);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyKey, setHistoryKey] = useState(0);
 
   const check = async () => {
     setChecking(true);
@@ -98,6 +173,7 @@ export function AppCompactCard({ monitor, onDelete, onCheckNow, onToggleEnabled 
           last_response_ms: res.availability.response_ms,
           last_check: res.availability.checked_at,
         }));
+        setHistoryKey((k) => k + 1);
       }
     } finally { setChecking(false); }
   };
@@ -117,60 +193,72 @@ export function AppCompactCard({ monitor, onDelete, onCheckNow, onToggleEnabled 
     : "border-border/60";
 
   return (
-    <div className={cn("rounded-lg border bg-card p-3 flex flex-col gap-2", borderColor)}>
-      {/* Name + status */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <StatusDot status={current.last_status} />
-          <span className="text-xs font-semibold truncate">{current.name}</span>
+    <div className={cn("rounded-lg border bg-card flex flex-col", borderColor)}>
+      <div className="p-3 flex flex-col gap-2">
+        {/* Name + status */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <StatusDot status={current.last_status} />
+            <span className="text-xs font-semibold truncate">{current.name}</span>
+          </div>
+          <OverallBadge status={current.last_status} />
         </div>
-        <OverallBadge status={current.last_status} />
+
+        {/* URL */}
+        <a
+          href={current.url} target="_blank" rel="noopener noreferrer"
+          className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground font-mono truncate"
+          title={current.url}
+        >
+          <span className="truncate">{displayUrl(current.url)}</span>
+          <ExternalLink className="h-2.5 w-2.5 flex-shrink-0" />
+        </a>
+
+        {/* GET + POST pills */}
+        <div className="flex gap-1.5 flex-wrap">
+          <CheckStatusPill type="availability" status={current.last_status === "up" ? "up" : current.last_status} />
+          <CheckStatusPill type="login" status={current.last_login_status} />
+        </div>
+
+        {/* Stats row */}
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-border/40">
+          <span>{current.last_response_ms != null ? `${current.last_response_ms}ms` : "—"}</span>
+          <span className="capitalize">{current.interval}</span>
+          {current.enabled === 0 && <span className="text-yellow-400">OFF</span>}
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-1">
+          <Button variant="outline" size="sm" className="h-6 flex-1 p-0"
+            onClick={() => setShowHistory(!showHistory)} title="Check history">
+            {showHistory ? <ChevronUp className="h-3 w-3" /> : <History className="h-3 w-3" />}
+          </Button>
+          <Button variant="outline" size="sm" className="h-6 flex-1 p-0" onClick={check} disabled={checking}>
+            {checking ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+          </Button>
+          <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={toggle} disabled={toggling}>
+            {toggling ? <Loader2 className="h-3 w-3 animate-spin" /> : (
+              <Power className={cn("h-3 w-3", current.enabled ? "text-green-400" : "text-muted-foreground")} />
+            )}
+          </Button>
+          <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onDelete(current.id)}>
+            <Trash2 className="h-3 w-3 text-destructive" />
+          </Button>
+        </div>
       </div>
 
-      {/* URL */}
-      <a
-        href={current.url} target="_blank" rel="noopener noreferrer"
-        className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground font-mono truncate"
-        title={current.url}
-      >
-        <span className="truncate">{displayUrl(current.url)}</span>
-        <ExternalLink className="h-2.5 w-2.5 flex-shrink-0" />
-      </a>
-
-      {/* GET + POST pills */}
-      <div className="flex gap-1.5 flex-wrap">
-        <CheckStatusPill type="availability" status={current.last_status === "up" ? "up" : current.last_status} />
-        <CheckStatusPill type="login" status={current.last_login_status} />
-      </div>
-
-      {/* Stats row */}
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-border/40">
-        <span>{current.last_response_ms != null ? `${current.last_response_ms}ms` : "—"}</span>
-        <span className="capitalize">{current.interval}</span>
-        {current.enabled === 0 && <span className="text-yellow-400">OFF</span>}
-      </div>
-
-      {/* Actions */}
-      <div className="flex gap-1">
-        <Button variant="outline" size="sm" className="h-6 flex-1 p-0" onClick={check} disabled={checking}>
-          {checking ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-        </Button>
-        <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={toggle} disabled={toggling}>
-          {toggling ? <Loader2 className="h-3 w-3 animate-spin" /> : (
-            <Power className={cn("h-3 w-3", current.enabled ? "text-green-400" : "text-muted-foreground")} />
-          )}
-        </Button>
-        <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onDelete(current.id)}>
-          <Trash2 className="h-3 w-3 text-destructive" />
-        </Button>
-      </div>
+      {showHistory && (
+        <div className="border-t border-border/40 bg-muted/10">
+          <AppHistoryPanel key={historyKey} monitorId={current.id} />
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── LIST VIEW ────────────────────────────────────────────────────────
 
-export const APP_LIST_COLS = "minmax(9rem,2fr) 5.5rem 5rem 5rem 7rem 6rem 10rem 6rem";
+export const APP_LIST_COLS = "minmax(9rem,2fr) 5.5rem 5rem 5rem 7rem 6rem 10rem 8.5rem";
 
 export function AppListHeader() {
   return (
@@ -195,6 +283,8 @@ export function AppListRow({ monitor, onDelete, onCheckNow, onToggleEnabled, onE
   const [checking, setChecking] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [current, setCurrent] = useState(monitor);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyKey, setHistoryKey] = useState(0);
 
   const check = async () => {
     setChecking(true);
@@ -208,6 +298,7 @@ export function AppListRow({ monitor, onDelete, onCheckNow, onToggleEnabled, onE
           last_response_ms: res.availability.response_ms,
           last_check: res.availability.checked_at,
         }));
+        setHistoryKey((k) => k + 1);
       }
     } finally { setChecking(false); }
   };
@@ -227,64 +318,76 @@ export function AppListRow({ monitor, onDelete, onCheckNow, onToggleEnabled, onE
     : "border-l-border";
 
   return (
-    <div
-      className={cn("grid items-center gap-3 px-4 py-3 rounded-lg border bg-card border-l-4", leftBorder, current.enabled === 0 && "opacity-60")}
-      style={{ gridTemplateColumns: APP_LIST_COLS }}
-    >
-      {/* Name + URL */}
-      <div className="flex items-center gap-2 min-w-0">
-        <StatusDot status={current.last_status} />
-        <div className="min-w-0">
-          <p className="font-semibold text-xs truncate">{current.name}</p>
-          <a href={current.url} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground font-mono truncate"
-          >
-            <span className="truncate">{displayUrl(current.url)}</span>
-            <ExternalLink className="h-2 w-2 flex-shrink-0" />
-          </a>
+    <div className={cn("rounded-lg border bg-card border-l-4", leftBorder, current.enabled === 0 && "opacity-60")}>
+      <div
+        className="grid items-center gap-3 px-4 py-3"
+        style={{ gridTemplateColumns: APP_LIST_COLS }}
+      >
+        {/* Name + URL */}
+        <div className="flex items-center gap-2 min-w-0">
+          <StatusDot status={current.last_status} />
+          <div className="min-w-0">
+            <p className="font-semibold text-xs truncate">{current.name}</p>
+            <a href={current.url} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground font-mono truncate"
+            >
+              <span className="truncate">{displayUrl(current.url)}</span>
+              <ExternalLink className="h-2 w-2 flex-shrink-0" />
+            </a>
+          </div>
+        </div>
+
+        {/* Overall status */}
+        <div><OverallBadge status={current.last_status} /></div>
+
+        {/* GET */}
+        <div><CheckStatusPill type="availability" status={current.last_status === "up" ? "up" : current.last_status} /></div>
+
+        {/* POST / Login */}
+        <div><CheckStatusPill type="login" status={current.last_login_status} /></div>
+
+        {/* Response ms */}
+        <div className="text-xs font-mono text-muted-foreground">
+          {current.last_response_ms != null ? `${current.last_response_ms}ms` : "—"}
+        </div>
+
+        {/* Interval */}
+        <div className="text-xs text-muted-foreground capitalize">{current.interval}</div>
+
+        {/* Last check */}
+        <div className="text-xs text-muted-foreground whitespace-nowrap">
+          {current.last_check ? new Date(current.last_check).toLocaleString() : t("ssl.neverChecked")}
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-1 justify-end">
+          <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onEditRequest(current.id)}>
+            <Pencil className="h-3 w-3" />
+          </Button>
+          <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={toggle} disabled={toggling}
+            title={current.enabled ? t("monitors.disable") : t("monitors.enable")}>
+            {toggling ? <Loader2 className="h-3 w-3 animate-spin" /> : (
+              <Power className={cn("h-3 w-3", current.enabled ? "text-green-400" : "text-muted-foreground")} />
+            )}
+          </Button>
+          <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={check} disabled={checking}>
+            {checking ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+          </Button>
+          <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onDelete(current.id)}>
+            <Trash2 className="h-3 w-3 text-destructive" />
+          </Button>
+          <Button variant="outline" size="sm" className="h-6 w-6 p-0"
+            onClick={() => setShowHistory(!showHistory)} title="Check history">
+            {showHistory ? <ChevronUp className="h-3 w-3" /> : <History className="h-3 w-3" />}
+          </Button>
         </div>
       </div>
 
-      {/* Overall status */}
-      <div><OverallBadge status={current.last_status} /></div>
-
-      {/* GET */}
-      <div><CheckStatusPill type="availability" status={current.last_status === "up" ? "up" : current.last_status} /></div>
-
-      {/* POST / Login */}
-      <div><CheckStatusPill type="login" status={current.last_login_status} /></div>
-
-      {/* Response ms */}
-      <div className="text-xs font-mono text-muted-foreground">
-        {current.last_response_ms != null ? `${current.last_response_ms}ms` : "—"}
-      </div>
-
-      {/* Interval */}
-      <div className="text-xs text-muted-foreground capitalize">{current.interval}</div>
-
-      {/* Last check */}
-      <div className="text-xs text-muted-foreground whitespace-nowrap">
-        {current.last_check ? new Date(current.last_check).toLocaleString() : t("ssl.neverChecked")}
-      </div>
-
-      {/* Actions */}
-      <div className="flex gap-1 justify-end">
-        <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onEditRequest(current.id)}>
-          <Pencil className="h-3 w-3" />
-        </Button>
-        <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={toggle} disabled={toggling}
-          title={current.enabled ? t("monitors.disable") : t("monitors.enable")}>
-          {toggling ? <Loader2 className="h-3 w-3 animate-spin" /> : (
-            <Power className={cn("h-3 w-3", current.enabled ? "text-green-400" : "text-muted-foreground")} />
-          )}
-        </Button>
-        <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={check} disabled={checking}>
-          {checking ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-        </Button>
-        <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onDelete(current.id)}>
-          <Trash2 className="h-3 w-3 text-destructive" />
-        </Button>
-      </div>
+      {showHistory && (
+        <div className="border-t border-border/40 bg-muted/10">
+          <AppHistoryPanel key={historyKey} monitorId={current.id} />
+        </div>
+      )}
     </div>
   );
 }
@@ -292,6 +395,119 @@ export function AppListRow({ monitor, onDelete, onCheckNow, onToggleEnabled, onE
 // ─── TABLE VIEW ───────────────────────────────────────────────────────
 
 type SortKey = "name" | "status" | "login" | "response_ms" | "last_check" | "interval";
+
+// Internal row component so each row can manage its own showHistory state
+function AppTableBodyRow({ monitor, liveMonitorData, isChecking, isToggling, onCheck, onToggle, onDelete, onEditRequest }: {
+  monitor: SafeMonitor;
+  liveMonitorData: { status: "up" | "down" | null; login: "up" | "down" | null; response_ms: number | null; last_check: string | null; enabled: number };
+  isChecking: boolean;
+  isToggling: boolean;
+  onCheck: () => void;
+  onToggle: () => void;
+  onDelete: (id: string) => void;
+  onEditRequest: (id: string) => void;
+}) {
+  const { t } = useI18n();
+  const [showHistory, setShowHistory] = useState(false);
+  const { status, login, response_ms, last_check, enabled } = liveMonitorData;
+
+  const StatusIcon = status === "up" ? CheckCircle : status === "down" ? XCircle : Activity;
+  const iconColor = status === "up" ? "text-green-400" : status === "down" ? "text-red-400" : "text-muted-foreground";
+  const rowColor =
+    status === "up"   ? "hover:bg-green-500/5"
+    : status === "down" ? "hover:bg-red-500/5"
+    : "hover:bg-muted/20";
+
+  return (
+    <>
+      <tr className={cn("transition-colors", rowColor, enabled === 0 && "opacity-60")}>
+        {/* Name + URL */}
+        <td className="px-3 py-2.5">
+          <div className="flex items-center gap-2">
+            <StatusIcon className={cn("h-3.5 w-3.5 flex-shrink-0", iconColor)} />
+            <div className="min-w-0">
+              <p className="font-semibold text-xs truncate">{monitor.name}</p>
+              <a href={monitor.url} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground font-mono truncate"
+              >
+                <span className="truncate max-w-[14rem]">{displayUrl(monitor.url)}</span>
+                <ExternalLink className="h-2 w-2 flex-shrink-0" />
+              </a>
+            </div>
+          </div>
+        </td>
+
+        {/* Overall */}
+        <td className="px-3 py-2.5"><OverallBadge status={status} /></td>
+
+        {/* GET */}
+        <td className="px-3 py-2.5">
+          <CheckStatusPill type="availability" status={status === "up" ? "up" : status} />
+        </td>
+
+        {/* POST */}
+        <td className="px-3 py-2.5">
+          <CheckStatusPill type="login" status={login} />
+        </td>
+
+        {/* Response ms */}
+        <td className="px-3 py-2.5 text-xs font-mono text-muted-foreground">
+          {response_ms != null ? `${response_ms}ms` : "—"}
+        </td>
+
+        {/* Username */}
+        <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono">
+          {monitor.username}
+        </td>
+
+        {/* Last check */}
+        <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+          {last_check ? new Date(last_check).toLocaleString() : t("ssl.neverChecked")}
+        </td>
+
+        {/* Interval */}
+        <td className="px-3 py-2.5 text-xs text-muted-foreground capitalize">
+          {monitor.interval}
+        </td>
+
+        {/* Actions */}
+        <td className="px-3 py-2.5">
+          <div className="flex justify-end gap-1">
+            <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onEditRequest(monitor.id)}>
+              <Pencil className="h-3 w-3" />
+            </Button>
+            <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={onToggle} disabled={isToggling}
+              title={enabled ? t("monitors.disable") : t("monitors.enable")}>
+              {isToggling ? <Loader2 className="h-3 w-3 animate-spin" /> : (
+                <Power className={cn("h-3 w-3", enabled ? "text-green-400" : "text-muted-foreground")} />
+              )}
+            </Button>
+            <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={onCheck} disabled={isChecking}>
+              {isChecking ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+            </Button>
+            <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onDelete(monitor.id)}>
+              <Trash2 className="h-3 w-3 text-destructive" />
+            </Button>
+            <Button variant="outline" size="sm" className="h-6 w-6 p-0"
+              onClick={() => setShowHistory(!showHistory)} title="Check history">
+              {showHistory ? <ChevronUp className="h-3 w-3" /> : <History className="h-3 w-3" />}
+            </Button>
+          </div>
+        </td>
+      </tr>
+
+      {showHistory && (
+        <tr>
+          <td colSpan={9} className="p-0 border-t-0">
+            <div className="border-t border-border/40 bg-muted/10">
+              <AppHistoryPanel monitorId={monitor.id} />
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
 
 export function AppMonitorTable({ monitors, onDelete, onCheckNow, onToggleEnabled, onEditRequest }: {
   monitors: SafeMonitor[];
@@ -400,95 +616,23 @@ export function AppMonitorTable({ monitors, onDelete, onCheckNow, onToggleEnable
             <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground w-24">User</th>
             <Th label="Last check" k="last_check" className="w-36" />
             <Th label="Interval" k="interval" className="w-20" />
-            <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground w-28"></th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground w-32"></th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-border/40">
-          {sorted.map((monitor) => {
-            const { status, login, response_ms, last_check, enabled } = getData(monitor);
-            const isChecking = checking === monitor.id;
-            const isToggling = toggling === monitor.id;
-            const StatusIcon = status === "up" ? CheckCircle : status === "down" ? XCircle : Activity;
-            const iconColor = status === "up" ? "text-green-400" : status === "down" ? "text-red-400" : "text-muted-foreground";
-            const rowColor =
-              status === "up"   ? "hover:bg-green-500/5"
-              : status === "down" ? "hover:bg-red-500/5"
-              : "hover:bg-muted/20";
-
-            return (
-              <tr key={monitor.id} className={cn("transition-colors", rowColor, enabled === 0 && "opacity-60")}>
-                {/* Name + URL */}
-                <td className="px-3 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <StatusIcon className={cn("h-3.5 w-3.5 flex-shrink-0", iconColor)} />
-                    <div className="min-w-0">
-                      <p className="font-semibold text-xs truncate">{monitor.name}</p>
-                      <a href={monitor.url} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground font-mono truncate"
-                      >
-                        <span className="truncate max-w-[14rem]">{displayUrl(monitor.url)}</span>
-                        <ExternalLink className="h-2 w-2 flex-shrink-0" />
-                      </a>
-                    </div>
-                  </div>
-                </td>
-
-                {/* Overall */}
-                <td className="px-3 py-2.5"><OverallBadge status={status} /></td>
-
-                {/* GET */}
-                <td className="px-3 py-2.5">
-                  <CheckStatusPill type="availability" status={status === "up" ? "up" : status} />
-                </td>
-
-                {/* POST */}
-                <td className="px-3 py-2.5">
-                  <CheckStatusPill type="login" status={login} />
-                </td>
-
-                {/* Response ms */}
-                <td className="px-3 py-2.5 text-xs font-mono text-muted-foreground">
-                  {response_ms != null ? `${response_ms}ms` : "—"}
-                </td>
-
-                {/* Username */}
-                <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono">
-                  {monitor.username}
-                </td>
-
-                {/* Last check */}
-                <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
-                  {last_check ? new Date(last_check).toLocaleString() : t("ssl.neverChecked")}
-                </td>
-
-                {/* Interval */}
-                <td className="px-3 py-2.5 text-xs text-muted-foreground capitalize">
-                  {monitor.interval}
-                </td>
-
-                {/* Actions */}
-                <td className="px-3 py-2.5">
-                  <div className="flex justify-end gap-1">
-                    <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onEditRequest(monitor.id)}>
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => toggle(monitor)} disabled={isToggling}
-                      title={enabled ? t("monitors.disable") : t("monitors.enable")}>
-                      {isToggling ? <Loader2 className="h-3 w-3 animate-spin" /> : (
-                        <Power className={cn("h-3 w-3", enabled ? "text-green-400" : "text-muted-foreground")} />
-                      )}
-                    </Button>
-                    <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => check(monitor)} disabled={isChecking}>
-                      {isChecking ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                    </Button>
-                    <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onDelete(monitor.id)}>
-                      <Trash2 className="h-3 w-3 text-destructive" />
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
+        <tbody>
+          {sorted.map((monitor) => (
+            <AppTableBodyRow
+              key={monitor.id}
+              monitor={monitor}
+              liveMonitorData={getData(monitor)}
+              isChecking={checking === monitor.id}
+              isToggling={toggling === monitor.id}
+              onCheck={() => check(monitor)}
+              onToggle={() => toggle(monitor)}
+              onDelete={onDelete}
+              onEditRequest={onEditRequest}
+            />
+          ))}
         </tbody>
       </table>
     </div>

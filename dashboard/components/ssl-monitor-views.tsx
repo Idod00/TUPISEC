@@ -1,15 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
-  AlertTriangle, CheckCircle, XCircle, LockKeyhole,
-  Loader2, RefreshCw, Trash2, Pencil, ChevronUp, ChevronDown,
-  Clock, Calendar, ArrowUpDown,
+  Loader2, RefreshCw, Trash2, Pencil,
+  ChevronUp, ChevronDown, ArrowUpDown, History,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/context";
-import type { SSLMonitorRecord, SSLCheckResult } from "@/lib/types";
+import type { SSLMonitorRecord, SSLCheckResult, SSLCheckHistoryRecord } from "@/lib/types";
 
 // ─── Shared helpers ──────────────────────────────────────────────────
 
@@ -55,20 +54,76 @@ interface MonitorActions {
   onUpdate: (id: string, fields: Partial<SSLMonitorRecord>) => Promise<SSLMonitorRecord | null>;
 }
 
+// ─── History panel ────────────────────────────────────────────────────
+
+function SSLHistoryPanel({ monitorId }: { monitorId: string }) {
+  const [history, setHistory] = useState<SSLCheckHistoryRecord[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/ssl-monitors/${monitorId}/history`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => { if (!cancelled) setHistory(data); })
+      .catch(() => { if (!cancelled) setHistory([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [monitorId]);
+
+  if (loading) return (
+    <div className="flex items-center gap-2 px-4 py-2.5 text-xs text-muted-foreground">
+      <Loader2 className="h-3 w-3 animate-spin" /><span>Loading history…</span>
+    </div>
+  );
+  if (!history || history.length === 0) return (
+    <p className="px-4 py-2.5 text-xs text-muted-foreground">No check history yet.</p>
+  );
+
+  return (
+    <div className="max-h-52 overflow-y-auto divide-y divide-border/30">
+      {history.map((h) => {
+        const dotColor =
+          h.status === "ok" ? "bg-green-400"
+          : h.status === "warning" ? "bg-yellow-400"
+          : "bg-red-400";
+        const textColor =
+          h.status === "ok" ? "text-green-400"
+          : h.status === "warning" ? "text-yellow-400"
+          : "text-red-400";
+        return (
+          <div key={h.id} className="flex items-center gap-3 px-4 py-1.5 text-xs">
+            <span className={cn("inline-block w-2 h-2 rounded-full flex-shrink-0", dotColor)} />
+            <span className={cn("font-semibold uppercase w-14 flex-shrink-0", textColor)}>{h.status}</span>
+            <span className="text-muted-foreground">{new Date(h.checked_at).toLocaleString()}</span>
+            {h.days_remaining !== null && (
+              <span className="ml-auto text-muted-foreground">{h.days_remaining}d remaining</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── COMPACT VIEW ─────────────────────────────────────────────────────
-// Small dense cards – 3 columns, status + days bar + actions only
 
 export function CompactCard({ monitor, onDelete, onCheckNow }: { monitor: SSLMonitorRecord } & Pick<MonitorActions, "onDelete" | "onCheckNow">) {
   const { t } = useI18n();
   const [checking, setChecking] = useState(false);
   const [days, setDays] = useState<number | null>(monitor.last_days_remaining);
   const [status, setStatus] = useState<string | null>(monitor.last_status);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyKey, setHistoryKey] = useState(0);
 
   const check = async () => {
     setChecking(true);
     try {
       const res = await onCheckNow(monitor.id);
-      if (res) { setDays(res.result.days_remaining); setStatus(res.status); }
+      if (res) {
+        setDays(res.result.days_remaining);
+        setStatus(res.status);
+        setHistoryKey((k) => k + 1);
+      }
     } finally { setChecking(false); }
   };
 
@@ -79,45 +134,57 @@ export function CompactCard({ monitor, onDelete, onCheckNow }: { monitor: SSLMon
     : "border-border/60";
 
   return (
-    <div className={cn("rounded-lg border bg-card p-3 flex flex-col gap-2", borderColor)}>
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <StatusDot status={status} />
-          <span className="text-xs font-mono font-semibold truncate">{monitor.domain}</span>
+    <div className={cn("rounded-lg border bg-card flex flex-col", borderColor)}>
+      <div className="p-3 flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <StatusDot status={status} />
+            <span className="text-xs font-mono font-semibold truncate">{monitor.domain}</span>
+          </div>
+          <StatusBadge status={status} />
         </div>
-        <StatusBadge status={status} />
+
+        {days !== null && (
+          <div>
+            <p className="text-xs text-muted-foreground mb-0.5">
+              {days < 0
+                ? t("ssl.expiredAgo").replace("{n}", String(Math.abs(days)))
+                : t("ssl.daysRemaining").replace("{n}", String(days))}
+            </p>
+            <DaysBar days={days} />
+          </div>
+        )}
+
+        <div className="flex items-center justify-between pt-1 border-t border-border/40">
+          <span className="text-xs text-muted-foreground capitalize">{monitor.interval}</span>
+          <div className="flex gap-1">
+            <Button variant="outline" size="sm" className="h-6 w-6 p-0"
+              onClick={() => setShowHistory(!showHistory)} title="Check history">
+              {showHistory ? <ChevronUp className="h-3 w-3" /> : <History className="h-3 w-3" />}
+            </Button>
+            <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={check} disabled={checking}>
+              {checking ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+            </Button>
+            <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onDelete(monitor.id)}>
+              <Trash2 className="h-3 w-3 text-destructive" />
+            </Button>
+          </div>
+        </div>
       </div>
 
-      {days !== null && (
-        <div>
-          <p className="text-xs text-muted-foreground mb-0.5">
-            {days < 0
-              ? t("ssl.expiredAgo").replace("{n}", String(Math.abs(days)))
-              : t("ssl.daysRemaining").replace("{n}", String(days))}
-          </p>
-          <DaysBar days={days} />
+      {showHistory && (
+        <div className="border-t border-border/40">
+          <SSLHistoryPanel key={historyKey} monitorId={monitor.id} />
         </div>
       )}
-
-      <div className="flex items-center justify-between pt-1 border-t border-border/40">
-        <span className="text-xs text-muted-foreground capitalize">{monitor.interval}</span>
-        <div className="flex gap-1">
-          <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={check} disabled={checking}>
-            {checking ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-          </Button>
-          <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onDelete(monitor.id)}>
-            <Trash2 className="h-3 w-3 text-destructive" />
-          </Button>
-        </div>
-      </div>
     </div>
   );
 }
 
 // ─── LIST VIEW ────────────────────────────────────────────────────────
 
-// Shared grid template — used by both header and each row for pixel-perfect alignment
-export const LIST_COLS = "minmax(9rem,1.5fr) 5.5rem 10rem 6rem minmax(6rem,1fr) 5.5rem 11rem 6rem";
+// Reduced column widths to prevent horizontal overflow
+export const LIST_COLS = "minmax(8rem,1.5fr) 4.5rem 8rem 5rem minmax(4rem,1fr) 4rem 9rem 7rem";
 
 export function ListHeader() {
   const { t } = useI18n();
@@ -143,6 +210,8 @@ export function ListRow({ monitor, onDelete, onCheckNow, onUpdate, onEditRequest
   const [checking, setChecking] = useState(false);
   const [days, setDays] = useState<number | null>(monitor.last_days_remaining);
   const [status, setStatus] = useState<string | null>(monitor.last_status);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyKey, setHistoryKey] = useState(0);
   const initResult = monitor.last_result_json ? JSON.parse(monitor.last_result_json) as SSLCheckResult : null;
   const [result, setResult] = useState<SSLCheckResult | null>(initResult);
 
@@ -150,7 +219,12 @@ export function ListRow({ monitor, onDelete, onCheckNow, onUpdate, onEditRequest
     setChecking(true);
     try {
       const res = await onCheckNow(monitor.id);
-      if (res) { setDays(res.result.days_remaining); setStatus(res.status); setResult(res.result); }
+      if (res) {
+        setDays(res.result.days_remaining);
+        setStatus(res.status);
+        setResult(res.result);
+        setHistoryKey((k) => k + 1);
+      }
     } finally { setChecking(false); }
   };
 
@@ -161,72 +235,82 @@ export function ListRow({ monitor, onDelete, onCheckNow, onUpdate, onEditRequest
     : "border-l-border";
 
   return (
-    <div
-      className={cn("grid items-center gap-3 px-4 py-3 rounded-lg border bg-card border-l-4", leftBorder)}
-      style={{ gridTemplateColumns: LIST_COLS }}
-    >
-      {/* Domain */}
-      <div className="flex items-center gap-2 min-w-0">
-        <StatusDot status={status} />
-        <div className="min-w-0">
-          <p className="font-mono font-semibold text-xs truncate">{monitor.domain}</p>
-          {monitor.port !== 443 && <p className="text-xs text-muted-foreground">:{monitor.port}</p>}
+    <div className={cn("rounded-lg border bg-card border-l-4", leftBorder)}>
+      <div
+        className="grid items-center gap-3 px-4 py-3"
+        style={{ gridTemplateColumns: LIST_COLS }}
+      >
+        {/* Domain */}
+        <div className="flex items-center gap-2 min-w-0">
+          <StatusDot status={status} />
+          <div className="min-w-0">
+            <p className="font-mono font-semibold text-xs truncate">{monitor.domain}</p>
+            {monitor.port !== 443 && <p className="text-xs text-muted-foreground">:{monitor.port}</p>}
+          </div>
+        </div>
+
+        {/* Status badge */}
+        <div><StatusBadge status={status} /></div>
+
+        {/* Days + bar */}
+        <div>
+          {days !== null ? (
+            <>
+              <p className={cn("text-xs mb-0.5", days < 0 ? "text-red-400" : days <= 14 ? "text-orange-400" : "text-muted-foreground")}>
+                {days < 0
+                  ? t("ssl.expiredAgo").replace("{n}", String(Math.abs(days)))
+                  : t("ssl.daysRemaining").replace("{n}", String(days))}
+              </p>
+              <DaysBar days={days} />
+            </>
+          ) : (
+            <span className="text-xs text-muted-foreground">—</span>
+          )}
+        </div>
+
+        {/* Expires */}
+        <div className="text-xs text-muted-foreground">
+          {result?.valid_to ? new Date(result.valid_to).toLocaleDateString() : "—"}
+        </div>
+
+        {/* Issuer */}
+        <div className="text-xs text-muted-foreground truncate">
+          {result?.issuer?.O ?? result?.issuer?.CN ?? "—"}
+        </div>
+
+        {/* Protocol */}
+        <div className="text-xs font-mono text-muted-foreground">
+          {result?.protocol ?? "—"}
+        </div>
+
+        {/* Last check */}
+        <div className="text-xs text-muted-foreground">
+          {monitor.last_check ? new Date(monitor.last_check).toLocaleString() : t("ssl.neverChecked")}
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-1 justify-end">
+          <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onEditRequest(monitor.id)}>
+            <Pencil className="h-3 w-3" />
+          </Button>
+          <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={check} disabled={checking}>
+            {checking ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+          </Button>
+          <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onDelete(monitor.id)}>
+            <Trash2 className="h-3 w-3 text-destructive" />
+          </Button>
+          <Button variant="outline" size="sm" className="h-6 w-6 p-0"
+            onClick={() => setShowHistory(!showHistory)} title="Check history">
+            {showHistory ? <ChevronUp className="h-3 w-3" /> : <History className="h-3 w-3" />}
+          </Button>
         </div>
       </div>
 
-      {/* Status badge */}
-      <div>
-        <StatusBadge status={status} />
-      </div>
-
-      {/* Days + bar */}
-      <div>
-        {days !== null ? (
-          <>
-            <p className={cn("text-xs mb-0.5", days < 0 ? "text-red-400" : days <= 14 ? "text-orange-400" : "text-muted-foreground")}>
-              {days < 0
-                ? t("ssl.expiredAgo").replace("{n}", String(Math.abs(days)))
-                : t("ssl.daysRemaining").replace("{n}", String(days))}
-            </p>
-            <DaysBar days={days} />
-          </>
-        ) : (
-          <span className="text-xs text-muted-foreground">—</span>
-        )}
-      </div>
-
-      {/* Expires */}
-      <div className="text-xs text-muted-foreground">
-        {result?.valid_to ? new Date(result.valid_to).toLocaleDateString() : "—"}
-      </div>
-
-      {/* Issuer */}
-      <div className="text-xs text-muted-foreground truncate">
-        {result?.issuer?.O ?? result?.issuer?.CN ?? "—"}
-      </div>
-
-      {/* Protocol */}
-      <div className="text-xs font-mono text-muted-foreground">
-        {result?.protocol ?? "—"}
-      </div>
-
-      {/* Last check */}
-      <div className="text-xs text-muted-foreground">
-        {monitor.last_check ? new Date(monitor.last_check).toLocaleString() : t("ssl.neverChecked")}
-      </div>
-
-      {/* Actions */}
-      <div className="flex gap-1 justify-end">
-        <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onEditRequest(monitor.id)}>
-          <Pencil className="h-3 w-3" />
-        </Button>
-        <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={check} disabled={checking}>
-          {checking ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-        </Button>
-        <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onDelete(monitor.id)}>
-          <Trash2 className="h-3 w-3 text-destructive" />
-        </Button>
-      </div>
+      {showHistory && (
+        <div className="border-t border-border/40 bg-muted/10">
+          <SSLHistoryPanel key={historyKey} monitorId={monitor.id} />
+        </div>
+      )}
     </div>
   );
 }
@@ -234,6 +318,114 @@ export function ListRow({ monitor, onDelete, onCheckNow, onUpdate, onEditRequest
 // ─── TABLE VIEW ───────────────────────────────────────────────────────
 
 type SortKey = "domain" | "status" | "days" | "expires" | "last_check" | "interval";
+
+// Internal row component so each row can manage its own showHistory state
+function SSLTableBodyRow({ monitor, monitorData, isChecking, onCheck, onDelete, onEditRequest }: {
+  monitor: SSLMonitorRecord;
+  monitorData: { status: string | null; days: number | null; result: SSLCheckResult | null };
+  isChecking: boolean;
+  onCheck: () => void;
+  onDelete: (id: string) => void;
+  onEditRequest: (id: string) => void;
+}) {
+  const { t } = useI18n();
+  const [showHistory, setShowHistory] = useState(false);
+  const { status, days, result } = monitorData;
+
+  const rowColor =
+    status === "ok" ? "hover:bg-green-500/5"
+    : status === "warning" ? "hover:bg-yellow-400/5"
+    : status === "error" ? "hover:bg-red-500/5"
+    : "hover:bg-muted/20";
+
+  return (
+    <>
+      <tr className={cn("transition-colors", rowColor)}>
+        {/* Domain */}
+        <td className="px-3 py-2.5">
+          <div className="flex items-center gap-2">
+            <StatusDot status={status} />
+            <div>
+              <p className="font-mono text-xs font-semibold">{monitor.domain}</p>
+              {monitor.port !== 443 && <p className="text-xs text-muted-foreground">:{monitor.port}</p>}
+            </div>
+          </div>
+        </td>
+
+        {/* Status */}
+        <td className="px-3 py-2.5"><StatusBadge status={status} /></td>
+
+        {/* Days + bar */}
+        <td className="px-3 py-2.5 w-40">
+          {days !== null ? (
+            <div>
+              <p className={cn("text-xs mb-1", days < 0 ? "text-red-400" : days <= 14 ? "text-orange-400" : "text-muted-foreground")}>
+                {days < 0
+                  ? t("ssl.expiredAgo").replace("{n}", String(Math.abs(days)))
+                  : t("ssl.daysRemaining").replace("{n}", String(days))}
+              </p>
+              <DaysBar days={days} />
+            </div>
+          ) : <span className="text-xs text-muted-foreground">—</span>}
+        </td>
+
+        {/* Expires */}
+        <td className="px-3 py-2.5 text-xs text-muted-foreground">
+          {result?.valid_to ? new Date(result.valid_to).toLocaleDateString() : "—"}
+        </td>
+
+        {/* Issuer */}
+        <td className="px-3 py-2.5 text-xs text-muted-foreground max-w-[8rem] truncate">
+          {result?.issuer?.O ?? result?.issuer?.CN ?? "—"}
+        </td>
+
+        {/* Protocol */}
+        <td className="px-3 py-2.5 text-xs font-mono text-muted-foreground">
+          {result?.protocol ?? "—"}
+        </td>
+
+        {/* Last check */}
+        <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+          {monitor.last_check ? new Date(monitor.last_check).toLocaleString() : t("ssl.neverChecked")}
+        </td>
+
+        {/* Interval */}
+        <td className="px-3 py-2.5 text-xs text-muted-foreground capitalize">
+          {monitor.interval}
+        </td>
+
+        {/* Actions */}
+        <td className="px-3 py-2.5">
+          <div className="flex justify-end gap-1">
+            <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onEditRequest(monitor.id)}>
+              <Pencil className="h-3 w-3" />
+            </Button>
+            <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={onCheck} disabled={isChecking}>
+              {isChecking ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+            </Button>
+            <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onDelete(monitor.id)}>
+              <Trash2 className="h-3 w-3 text-destructive" />
+            </Button>
+            <Button variant="outline" size="sm" className="h-6 w-6 p-0"
+              onClick={() => setShowHistory(!showHistory)} title="Check history">
+              {showHistory ? <ChevronUp className="h-3 w-3" /> : <History className="h-3 w-3" />}
+            </Button>
+          </div>
+        </td>
+      </tr>
+
+      {showHistory && (
+        <tr>
+          <td colSpan={9} className="p-0 border-t-0">
+            <div className="border-t border-border/40 bg-muted/10">
+              <SSLHistoryPanel monitorId={monitor.id} />
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
 
 export function MonitorTable({ monitors, onDelete, onCheckNow, onUpdate, onEditRequest }: {
   monitors: SSLMonitorRecord[];
@@ -306,100 +498,28 @@ export function MonitorTable({ monitors, onDelete, onCheckNow, onUpdate, onEditR
         <thead className="bg-muted/40 border-b border-border/60">
           <tr>
             <Th label={t("ssl.domain")} k="domain" />
-            <Th label={t("ssl.status.ok").replace("OK", "Status")} k="status" className="w-24" />
+            <Th label="Status" k="status" className="w-24" />
             <Th label={t("ssl.daysRemaining").replace("{n} ", "")} k="days" className="w-40" />
             <Th label={t("ssl.expires")} k="expires" className="w-28" />
             <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground w-32">{t("ssl.issuer")}</th>
             <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground w-24">{t("ssl.protocol")}</th>
             <Th label={t("ssl.nextCheck")} k="last_check" className="w-36" />
             <Th label={t("schedules.interval")} k="interval" className="w-24" />
-            <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground w-24"></th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground w-28"></th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-border/40">
-          {sorted.map((monitor) => {
-            const { status, days, result } = getMonitorData(monitor);
-            const isChecking = checking === monitor.id;
-            const rowColor =
-              status === "ok" ? "hover:bg-green-500/5"
-              : status === "warning" ? "hover:bg-yellow-400/5"
-              : status === "error" ? "hover:bg-red-500/5"
-              : "hover:bg-muted/20";
-
-            return (
-              <tr key={monitor.id} className={cn("transition-colors", rowColor)}>
-                {/* Domain */}
-                <td className="px-3 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <StatusDot status={status} />
-                    <div>
-                      <p className="font-mono text-xs font-semibold">{monitor.domain}</p>
-                      {monitor.port !== 443 && <p className="text-xs text-muted-foreground">:{monitor.port}</p>}
-                    </div>
-                  </div>
-                </td>
-
-                {/* Status */}
-                <td className="px-3 py-2.5">
-                  <StatusBadge status={status} />
-                </td>
-
-                {/* Days + bar */}
-                <td className="px-3 py-2.5 w-40">
-                  {days !== null ? (
-                    <div>
-                      <p className={cn("text-xs mb-1", days < 0 ? "text-red-400" : days <= 14 ? "text-orange-400" : "text-muted-foreground")}>
-                        {days < 0
-                          ? t("ssl.expiredAgo").replace("{n}", String(Math.abs(days)))
-                          : t("ssl.daysRemaining").replace("{n}", String(days))}
-                      </p>
-                      <DaysBar days={days} />
-                    </div>
-                  ) : <span className="text-xs text-muted-foreground">—</span>}
-                </td>
-
-                {/* Expires */}
-                <td className="px-3 py-2.5 text-xs text-muted-foreground">
-                  {result?.valid_to ? new Date(result.valid_to).toLocaleDateString() : "—"}
-                </td>
-
-                {/* Issuer */}
-                <td className="px-3 py-2.5 text-xs text-muted-foreground max-w-[8rem] truncate">
-                  {result?.issuer?.O ?? result?.issuer?.CN ?? "—"}
-                </td>
-
-                {/* Protocol */}
-                <td className="px-3 py-2.5 text-xs font-mono text-muted-foreground">
-                  {result?.protocol ?? "—"}
-                </td>
-
-                {/* Last check */}
-                <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
-                  {monitor.last_check ? new Date(monitor.last_check).toLocaleString() : t("ssl.neverChecked")}
-                </td>
-
-                {/* Interval */}
-                <td className="px-3 py-2.5 text-xs text-muted-foreground capitalize">
-                  {monitor.interval}
-                </td>
-
-                {/* Actions */}
-                <td className="px-3 py-2.5">
-                  <div className="flex justify-end gap-1">
-                    <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onEditRequest(monitor.id)}>
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => check(monitor.id)} disabled={isChecking}>
-                      {isChecking ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                    </Button>
-                    <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => onDelete(monitor.id)}>
-                      <Trash2 className="h-3 w-3 text-destructive" />
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
+        <tbody>
+          {sorted.map((monitor) => (
+            <SSLTableBodyRow
+              key={monitor.id}
+              monitor={monitor}
+              monitorData={getMonitorData(monitor)}
+              isChecking={checking === monitor.id}
+              onCheck={() => check(monitor.id)}
+              onDelete={onDelete}
+              onEditRequest={onEditRequest}
+            />
+          ))}
         </tbody>
       </table>
     </div>
