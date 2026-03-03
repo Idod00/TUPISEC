@@ -119,42 +119,93 @@ async function dispatchAppNotifications(
   await Promise.allSettled(webhookPromises);
 
   if (monitor.notify_email) {
-    const subject = `[TupiSec] App Down: ${monitor.name}`;
-    const html = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"></head>
-<body style="font-family:sans-serif;background:#0f172a;color:#e2e8f0;padding:32px;">
-  <div style="max-width:520px;margin:0 auto;background:#1e293b;border-radius:12px;padding:32px;border:1px solid #334155;">
-    <div style="display:table;width:100%;margin-bottom:24px;">
-      <div style="display:table-cell;vertical-align:middle;width:48px;">
-        <div style="width:20px;height:20px;border-radius:50%;background:#ef4444;display:inline-block;"></div>
-      </div>
-      <div style="display:table-cell;vertical-align:middle;">
-        <h1 style="margin:0;font-size:20px;color:#f8fafc;">TupiSec App Monitor</h1>
-        <span style="display:inline-block;background:#ef444420;color:#ef4444;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600;">DOWN</span>
-      </div>
-    </div>
-    <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+    const subject = `[TupiSec] ALERTA: ${monitor.name} esta CAIDO`;
+    const checkedAt = new Date(result.checked_at).toLocaleString("es-PY", { dateStyle: "full", timeStyle: "medium" });
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 0;">
+  <tr><td align="center">
+    <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.10);">
+
+      <!-- Header rojo -->
       <tr>
-        <td style="padding:8px 0;color:#94a3b8;font-size:13px;width:140px;">App</td>
-        <td style="padding:8px 0;font-weight:600;">${monitor.name}</td>
+        <td style="background:linear-gradient(135deg,#dc2626,#b91c1c);padding:32px 36px;text-align:center;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td align="center" style="padding-bottom:12px;">
+                <div style="display:inline-block;width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,0.15);border:3px solid rgba(255,255,255,0.4);text-align:center;line-height:56px;">
+                  <span style="font-size:26px;font-weight:900;color:#ffffff;font-family:Georgia,serif;">!</span>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td align="center">
+                <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.75);letter-spacing:2px;text-transform:uppercase;">TupiSec Monitor</p>
+                <h1 style="margin:6px 0 0;font-size:26px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">Servicio Caido</h1>
+              </td>
+            </tr>
+          </table>
+        </td>
       </tr>
+
+      <!-- Nombre del monitor -->
       <tr>
-        <td style="padding:8px 0;color:#94a3b8;font-size:13px;">URL</td>
-        <td style="padding:8px 0;font-family:monospace;">${monitor.url}</td>
+        <td style="background:#fef2f2;padding:20px 36px;border-bottom:1px solid #fecaca;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td>
+                <p style="margin:0;font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;">Monitor</p>
+                <p style="margin:4px 0 0;font-size:22px;font-weight:700;color:#1e293b;">${monitor.name}</p>
+              </td>
+              <td align="right" valign="middle">
+                <span style="display:inline-block;background:#dc2626;color:#ffffff;font-size:12px;font-weight:700;padding:6px 16px;border-radius:99px;letter-spacing:1px;">DOWN</span>
+              </td>
+            </tr>
+          </table>
+        </td>
       </tr>
+
+      <!-- Detalles -->
       <tr>
-        <td style="padding:8px 0;color:#94a3b8;font-size:13px;">Response</td>
-        <td style="padding:8px 0;">${result.response_ms}ms</td>
+        <td style="padding:28px 36px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+            <tr style="background:#f8fafc;">
+              <td style="padding:12px 16px;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;width:130px;border-bottom:1px solid #e2e8f0;">URL</td>
+              <td style="padding:12px 16px;font-size:13px;color:#0f172a;font-family:Courier New,monospace;border-bottom:1px solid #e2e8f0;word-break:break-all;">${monitor.url}</td>
+            </tr>
+            <tr>
+              <td style="padding:12px 16px;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #e2e8f0;">Respuesta</td>
+              <td style="padding:12px 16px;font-size:13px;color:#0f172a;border-bottom:1px solid #e2e8f0;">${result.response_ms} ms</td>
+            </tr>
+            ${result.error ? `
+            <tr style="background:#fef2f2;">
+              <td style="padding:12px 16px;font-size:12px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:1px;">Error</td>
+              <td style="padding:12px 16px;font-size:13px;color:#dc2626;font-family:Courier New,monospace;">${result.error}</td>
+            </tr>` : ""}
+          </table>
+        </td>
       </tr>
-      ${result.error ? `<tr><td style="padding:8px 0;color:#94a3b8;font-size:13px;">Error</td><td style="padding:8px 0;color:#ef4444;">${result.error}</td></tr>` : ""}
+
+      <!-- Boton -->
+      <tr>
+        <td style="padding:0 36px 28px;text-align:center;">
+          <a href="${baseUrl}/monitors" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 32px;border-radius:8px;letter-spacing:0.3px;">Ver todos los monitores</a>
+        </td>
+      </tr>
+
+      <!-- Footer -->
+      <tr>
+        <td style="background:#f8fafc;padding:16px 36px;border-top:1px solid #e2e8f0;text-align:center;">
+          <p style="margin:0;font-size:11px;color:#94a3b8;">Revisado: ${checkedAt}</p>
+          <p style="margin:4px 0 0;font-size:11px;color:#cbd5e1;">TupiSec Security Dashboard &mdash; Alerta automatica</p>
+        </td>
+      </tr>
+
     </table>
-    <p style="color:#64748b;font-size:12px;margin:0;">
-      Checked at: ${new Date(result.checked_at).toLocaleString()}<br>
-      View all monitors: <a href="${baseUrl}/monitors" style="color:#6366f1;">${baseUrl}/monitors</a>
-    </p>
-  </div>
+  </td></tr>
+</table>
 </body>
 </html>`;
     await sendEmail(monitor.notify_email, subject, html).catch((err) => {

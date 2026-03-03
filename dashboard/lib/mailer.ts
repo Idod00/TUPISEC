@@ -34,71 +34,125 @@ export async function sendSSLAlertEmail(
 ): Promise<void> {
   if (!monitor.notify_email) return;
 
-  const statusLabel = status === "warning" ? "WARNING" : "ERROR";
-  const statusColor = status === "warning" ? "#f59e0b" : "#ef4444";
-  const daysText =
-    result.days_remaining !== null
-      ? result.days_remaining < 0
-        ? `<strong style="color:#ef4444">Expired ${Math.abs(result.days_remaining)} days ago</strong>`
-        : `<strong style="color:${statusColor}">${result.days_remaining} days remaining</strong>`
-      : "Unknown";
+  const isWarning = status === "warning";
+  const headerBg = isWarning
+    ? "linear-gradient(135deg,#d97706,#b45309)"
+    : "linear-gradient(135deg,#dc2626,#b91c1c)";
+  const accentColor = isWarning ? "#d97706" : "#dc2626";
+  const accentBg   = isWarning ? "#fffbeb" : "#fef2f2";
+  const accentBorder = isWarning ? "#fde68a" : "#fecaca";
+  const statusLabel = isWarning ? "ADVERTENCIA" : "ERROR";
+  const statusTitle = isWarning ? "Certificado por Vencer" : "Error de Certificado";
+
+  const daysText = result.days_remaining !== null
+    ? result.days_remaining < 0
+      ? `Vencido hace ${Math.abs(result.days_remaining)} dias`
+      : `${result.days_remaining} dias restantes`
+    : "Desconocido";
 
   const expiresText = result.valid_to
-    ? new Date(result.valid_to).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      })
-    : "Unknown";
+    ? new Date(result.valid_to).toLocaleDateString("es-PY", { year: "numeric", month: "long", day: "numeric" })
+    : "Desconocido";
 
-  const html = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"></head>
-<body style="font-family:sans-serif;background:#0f172a;color:#e2e8f0;padding:32px;">
-  <div style="max-width:520px;margin:0 auto;background:#1e293b;border-radius:12px;padding:32px;border:1px solid #334155;">
-    <div style="display:table;width:100%;margin-bottom:24px;">
-      <div style="display:table-cell;vertical-align:middle;width:48px;">
-        <div style="width:20px;height:20px;border-radius:50%;background:${statusColor};display:inline-block;"></div>
-      </div>
-      <div style="display:table-cell;vertical-align:middle;">
-        <h1 style="margin:0;font-size:20px;color:#f8fafc;">TupiSec SSL Alert</h1>
-        <span style="display:inline-block;background:${statusColor}20;color:${statusColor};padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600;">${statusLabel}</span>
-      </div>
-    </div>
+  const checkedAt = new Date(result.checked_at).toLocaleString("es-PY", { dateStyle: "full", timeStyle: "medium" });
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
 
-    <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 0;">
+  <tr><td align="center">
+    <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.10);">
+
+      <!-- Header -->
       <tr>
-        <td style="padding:8px 0;color:#94a3b8;font-size:13px;width:140px;">Domain</td>
-        <td style="padding:8px 0;font-weight:600;font-family:monospace;">${monitor.domain}</td>
+        <td style="background:${headerBg};padding:32px 36px;text-align:center;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td align="center" style="padding-bottom:12px;">
+                <div style="display:inline-block;width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,0.15);border:3px solid rgba(255,255,255,0.4);text-align:center;line-height:52px;">
+                  <span style="font-size:22px;font-weight:900;color:#ffffff;font-family:Georgia,serif;">SSL</span>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td align="center">
+                <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.75);letter-spacing:2px;text-transform:uppercase;">TupiSec SSL Monitor</p>
+                <h1 style="margin:6px 0 0;font-size:26px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">${statusTitle}</h1>
+              </td>
+            </tr>
+          </table>
+        </td>
       </tr>
+
+      <!-- Dominio -->
       <tr>
-        <td style="padding:8px 0;color:#94a3b8;font-size:13px;">Days Remaining</td>
-        <td style="padding:8px 0;">${daysText}</td>
+        <td style="background:${accentBg};padding:20px 36px;border-bottom:1px solid ${accentBorder};">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td>
+                <p style="margin:0;font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;">Dominio</p>
+                <p style="margin:4px 0 0;font-size:20px;font-weight:700;color:#1e293b;font-family:Courier New,monospace;">${monitor.domain}</p>
+              </td>
+              <td align="right" valign="middle">
+                <span style="display:inline-block;background:${accentColor};color:#ffffff;font-size:12px;font-weight:700;padding:6px 16px;border-radius:99px;letter-spacing:1px;">${statusLabel}</span>
+              </td>
+            </tr>
+          </table>
+        </td>
       </tr>
+
+      <!-- Detalles del certificado -->
       <tr>
-        <td style="padding:8px 0;color:#94a3b8;font-size:13px;">Expires</td>
-        <td style="padding:8px 0;">${expiresText}</td>
+        <td style="padding:28px 36px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+            <tr style="background:#f8fafc;">
+              <td style="padding:12px 16px;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;width:140px;border-bottom:1px solid #e2e8f0;">Dias Restantes</td>
+              <td style="padding:12px 16px;font-size:13px;font-weight:600;color:${accentColor};border-bottom:1px solid #e2e8f0;">${daysText}</td>
+            </tr>
+            <tr>
+              <td style="padding:12px 16px;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #e2e8f0;">Vence</td>
+              <td style="padding:12px 16px;font-size:13px;color:#0f172a;border-bottom:1px solid #e2e8f0;">${expiresText}</td>
+            </tr>
+            <tr style="background:#f8fafc;">
+              <td style="padding:12px 16px;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #e2e8f0;">Emisor</td>
+              <td style="padding:12px 16px;font-size:13px;color:#0f172a;border-bottom:1px solid #e2e8f0;">${result.issuer?.O ?? result.issuer?.CN ?? "Desconocido"}</td>
+            </tr>
+            <tr>
+              <td style="padding:12px 16px;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;${result.error ? "border-bottom:1px solid #e2e8f0;" : ""}">Protocolo</td>
+              <td style="padding:12px 16px;font-size:13px;color:#0f172a;font-family:Courier New,monospace;${result.error ? "border-bottom:1px solid #e2e8f0;" : ""}">${result.protocol ?? "—"}</td>
+            </tr>
+            ${result.error ? `
+            <tr style="background:#fef2f2;">
+              <td style="padding:12px 16px;font-size:12px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:1px;">Error</td>
+              <td style="padding:12px 16px;font-size:13px;color:#dc2626;font-family:Courier New,monospace;">${result.error}</td>
+            </tr>` : ""}
+          </table>
+        </td>
       </tr>
+
+      <!-- Boton -->
       <tr>
-        <td style="padding:8px 0;color:#94a3b8;font-size:13px;">Issuer</td>
-        <td style="padding:8px 0;">${result.issuer?.O ?? result.issuer?.CN ?? "Unknown"}</td>
+        <td style="padding:0 36px 28px;text-align:center;">
+          <a href="${baseUrl}/ssl" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 32px;border-radius:8px;letter-spacing:0.3px;">Ver Monitor SSL</a>
+        </td>
       </tr>
+
+      <!-- Footer -->
       <tr>
-        <td style="padding:8px 0;color:#94a3b8;font-size:13px;">Protocol</td>
-        <td style="padding:8px 0;font-family:monospace;">${result.protocol}</td>
+        <td style="background:#f8fafc;padding:16px 36px;border-top:1px solid #e2e8f0;text-align:center;">
+          <p style="margin:0;font-size:11px;color:#94a3b8;">Revisado: ${checkedAt}</p>
+          <p style="margin:4px 0 0;font-size:11px;color:#cbd5e1;">TupiSec Security Dashboard &mdash; Alerta automatica</p>
+        </td>
       </tr>
-      ${result.error ? `<tr><td style="padding:8px 0;color:#94a3b8;font-size:13px;">Error</td><td style="padding:8px 0;color:#ef4444;">${result.error}</td></tr>` : ""}
+
     </table>
-
-    <p style="color:#64748b;font-size:12px;margin:0;">
-      This alert was sent by TupiSec SSL Certificate Monitor.<br>
-      Checked at: ${new Date(result.checked_at).toLocaleString()}
-    </p>
-  </div>
+  </td></tr>
+</table>
 </body>
 </html>`;
 
-  const subject = `[TupiSec] SSL Alert: ${monitor.domain} — ${status === "warning" ? "Expiring Soon" : "Certificate Error"}`;
+  const subject = `[TupiSec] SSL ${isWarning ? "Advertencia" : "Error"}: ${monitor.domain} &mdash; ${isWarning ? "Certificado por vencer" : "Error de certificado"}`;
   await sendEmail(monitor.notify_email, subject, html);
 }
