@@ -17,6 +17,7 @@ async function getTransporter() {
     port,
     secure,
     auth: user ? { user, pass } : undefined,
+    tls: { rejectUnauthorized: false },
   });
 }
 
