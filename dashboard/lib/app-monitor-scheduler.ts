@@ -126,9 +126,11 @@ async function dispatchAppNotifications(
 <head><meta charset="UTF-8"></head>
 <body style="font-family:sans-serif;background:#0f172a;color:#e2e8f0;padding:32px;">
   <div style="max-width:520px;margin:0 auto;background:#1e293b;border-radius:12px;padding:32px;border:1px solid #334155;">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
-      <span style="font-size:32px;">🔴</span>
-      <div>
+    <div style="display:table;width:100%;margin-bottom:24px;">
+      <div style="display:table-cell;vertical-align:middle;width:48px;">
+        <div style="width:20px;height:20px;border-radius:50%;background:#ef4444;display:inline-block;"></div>
+      </div>
+      <div style="display:table-cell;vertical-align:middle;">
         <h1 style="margin:0;font-size:20px;color:#f8fafc;">TupiSec App Monitor</h1>
         <span style="display:inline-block;background:#ef444420;color:#ef4444;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600;">DOWN</span>
       </div>
