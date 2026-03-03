@@ -137,7 +137,8 @@ export async function initDb(): Promise<void> {
       last_status TEXT,
       last_response_ms INTEGER,
       notify_email TEXT,
-      last_login_status TEXT
+      last_login_status TEXT,
+      last_notified_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS app_check_history (
@@ -166,6 +167,11 @@ export async function initDb(): Promise<void> {
   // Migrate: add monitor_type column to existing app_monitors tables
   await pool.query(`
     ALTER TABLE app_monitors ADD COLUMN IF NOT EXISTS monitor_type TEXT NOT NULL DEFAULT 'login'
+  `).catch(() => {});
+
+  // Migrate: add last_notified_at for re-notification tracking
+  await pool.query(`
+    ALTER TABLE app_monitors ADD COLUMN IF NOT EXISTS last_notified_at TEXT
   `).catch(() => {});
 }
 
@@ -659,12 +665,20 @@ export async function updateAppMonitorAfterCheck(
   responseMs: number,
   lastCheck: string,
   nextCheck: string,
-  loginStatus?: "up" | "down" | null
+  loginStatus?: "up" | "down" | null,
+  lastNotifiedAt?: string | null
 ): Promise<void> {
-  await getPool().query(
-    `UPDATE app_monitors SET last_status = $1, last_response_ms = $2, last_check = $3, next_check = $4, last_login_status = $5 WHERE id = $6`,
-    [status, responseMs, lastCheck, nextCheck, loginStatus ?? null, id]
-  );
+  if (lastNotifiedAt !== undefined) {
+    await getPool().query(
+      `UPDATE app_monitors SET last_status = $1, last_response_ms = $2, last_check = $3, next_check = $4, last_login_status = $5, last_notified_at = $6 WHERE id = $7`,
+      [status, responseMs, lastCheck, nextCheck, loginStatus ?? null, lastNotifiedAt, id]
+    );
+  } else {
+    await getPool().query(
+      `UPDATE app_monitors SET last_status = $1, last_response_ms = $2, last_check = $3, next_check = $4, last_login_status = $5 WHERE id = $6`,
+      [status, responseMs, lastCheck, nextCheck, loginStatus ?? null, id]
+    );
+  }
 }
 
 // ─── App Check History ─────────────────────────────────────────────

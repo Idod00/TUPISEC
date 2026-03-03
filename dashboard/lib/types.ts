@@ -225,6 +225,7 @@ export interface AppMonitorRecord {
   last_login_status: "up" | "down" | null;
   last_response_ms: number | null;
   notify_email: string | null;
+  last_notified_at?: string | null;
 }
 
 export interface AppCheckResult {

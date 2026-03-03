@@ -176,6 +176,7 @@ async function executeAppCheck(monitorId: string): Promise<void> {
 
   const now = new Date().toISOString();
   const nextRun = computeNextRun(monitor.interval as AppMonitorInterval);
+  const RENOTIFY_MS = 24 * 60 * 60 * 1000; // re-notify if still down after 24h
 
   // ── Check 1: Availability (GET) ──
   const availResult = await checkAvailability(monitor.url);
@@ -224,22 +225,29 @@ async function executeAppCheck(monitorId: string): Promise<void> {
     console.log(
       `[app-scheduler] ${monitor.name} → availability:${availResult.status} login:${loginResult.status} (${availResult.response_ms}ms)`
     );
-
-    // Notify only on transition to down
-    if (overallStatus === "down" && monitor.last_status !== "down") {
-      dispatchAppNotifications(monitor, availResult.status === "down" ? availResult : loginResult).catch((err) =>
-        console.error("[app-scheduler] Notification dispatch failed:", err)
-      );
-    }
   }
 
+  // ── Notification logic ──
+  // Notify on: first transition to down, never-notified while down, or re-notify after 24h
+  const lastNotifiedMs = monitor.last_notified_at ? new Date(monitor.last_notified_at).getTime() : null;
+  const shouldNotify =
+    overallStatus === "down" && (
+      monitor.last_status !== "down" ||
+      lastNotifiedMs === null ||
+      Date.now() - lastNotifiedMs >= RENOTIFY_MS
+    );
+
+  const newLastNotifiedAt = shouldNotify ? now : (overallStatus === "up" ? null : (monitor.last_notified_at ?? null));
+
   await updateAppMonitorAfterCheck(
-    monitorId, overallStatus, availResult.response_ms, now, nextRun, loginStatusValue
+    monitorId, overallStatus, availResult.response_ms, now, nextRun, loginStatusValue, newLastNotifiedAt
   );
 
-  // Notify on availability-only monitors when going down
-  if (isAvailabilityOnly && overallStatus === "down" && monitor.last_status !== "down") {
-    dispatchAppNotifications(monitor, availResult).catch((err) =>
+  if (shouldNotify) {
+    const notifyResult = isAvailabilityOnly
+      ? availResult
+      : (availResult.status === "down" ? availResult : loginStatusValue === "down" ? { url: monitor.url, checked_at: now, status: "down" as const, response_ms: 0, status_code: null, error: "Login failed" } : availResult);
+    dispatchAppNotifications(monitor, notifyResult).catch((err) =>
       console.error("[app-scheduler] Notification dispatch failed:", err)
     );
   }
