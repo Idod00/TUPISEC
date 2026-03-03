@@ -208,9 +208,10 @@ async function dispatchAppNotifications(
 </table>
 </body>
 </html>`;
-    await sendEmail(monitor.notify_email, subject, html).catch((err) => {
-      console.error(`[app-scheduler] Email to ${monitor.notify_email} failed:`, err);
-    });
+    console.log(`[app-scheduler] Sending alert email to ${monitor.notify_email}...`);
+    await sendEmail(monitor.notify_email, subject, html)
+      .then(() => console.log(`[app-scheduler] Alert email sent OK to ${monitor.notify_email}`))
+      .catch((err) => console.error(`[app-scheduler] Email to ${monitor.notify_email} FAILED:`, err));
   }
 }
 
